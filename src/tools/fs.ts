@@ -160,6 +160,12 @@ export function applyStrReplace(source: string, oldStr: string, newStr: string):
   }
 
   // 2) WHITESPACE-NORMALIZED
+  // Collapsing all whitespace (incl. newlines) to single spaces can occasionally make two
+  // genuinely distinct source spans look identical (over-collapsing). When that happens we
+  // don't give up immediately — fuzzy (tier 3) applies a stricter, line-count-aware match
+  // that can disambiguate — so a non-unique whitespace result is remembered and only
+  // surfaced if tier 3 can't resolve it either.
+  let wsNonUniqueError: string | undefined;
   const normalizedOld = oldStr.trim().replace(/\s+/g, ' ');
   if (normalizedOld.length > 0) {
     const { normalized: normSource, mapStart, mapEnd } = normalizeWithMap(source);
@@ -173,10 +179,7 @@ export function applyStrReplace(source: string, oldStr: string, newStr: string):
       return { ok: true, result, matched: 'whitespace' };
     }
     if (wsMatches.length > 1) {
-      return {
-        ok: false,
-        error: `old string is not unique after whitespace normalization (${wsMatches.length} matches); add more surrounding context to disambiguate.`,
-      };
+      wsNonUniqueError = `old string is not unique after whitespace normalization (${wsMatches.length} matches); add more surrounding context to disambiguate.`;
     }
   }
 
@@ -208,17 +211,28 @@ export function applyStrReplace(source: string, oldStr: string, newStr: string):
         lineOffsets.push(offset);
         offset += line.length + 1; // +1 for the '\n' joining this line to the next
       }
+      // End of the matched block = end of the LAST matched line's own content, excluding its
+      // trailing '\n' — this leaves that newline (the separator to whatever follows) untouched,
+      // consistent with how the exact/whitespace tiers only ever consume the matched span itself.
       const startOffset = lineOffsets[s];
-      const endOffset = s + len < sourceLines.length ? lineOffsets[s + len] : source.length;
+      const lastLine = sourceLines[s + len - 1];
+      const endOffset = lineOffsets[s + len - 1] + lastLine.length;
       const result = source.slice(0, startOffset) + newStr + source.slice(endOffset);
       return { ok: true, result, matched: 'fuzzy' };
     }
     if (matchesAt.length > 1) {
       return {
         ok: false,
-        error: `old string is not unique (${matchesAt.length} fuzzy line matches); add more surrounding context to disambiguate.`,
+        error:
+          wsNonUniqueError ??
+          `old string is not unique (${matchesAt.length} fuzzy line matches); add more surrounding context to disambiguate.`,
       };
     }
+  }
+
+  // Whitespace tier was ambiguous and fuzzy couldn't disambiguate either (0 line-block matches).
+  if (wsNonUniqueError) {
+    return { ok: false, error: wsNonUniqueError };
   }
 
   // 4) NONE — actionable error, with a near-miss hint if we can find one.
