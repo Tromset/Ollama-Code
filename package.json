@@ -8,7 +8,7 @@
     "node": ">=22"
   },
   "bin": {
-    "qwen-harness": "src/index.ts"
+    "qwen-harness": "bin/qwen-harness.js"
   },
   "scripts": {
     "start": "tsx src/index.ts",
