@@ -11,8 +11,8 @@ function printHelp(): void {
   console.log(`qwen-harness — local agentic coding harness for Qwen 3.5 via Ollama
 
 Usage:
-  npm start                          Launch the TUI (interactive)
-  npm start -- [options]
+  qwen-harness                       Launch the TUI (interactive)
+  qwen-harness [options]
 
 Options:
   --model <name>       Ollama model (default: qwen3.5:latest)
@@ -24,9 +24,9 @@ Options:
   --help, -h           Show this help
 
 Examples:
-  npm start
-  npm start -- --mode plan --model qwen3.5:latest
-  npm run smoke                        Quick streaming smoke test (no TUI)
+  qwen-harness
+  qwen-harness --mode plan --model qwen3.5:latest
+  npm run smoke                        Quick streaming smoke test (no TUI, from the repo)
 `);
 }
 

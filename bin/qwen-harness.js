@@ -12,7 +12,11 @@ const tsxLocal = join(root, 'node_modules', '.bin', 'tsx');
 const tsx = existsSync(tsxLocal) ? tsxLocal : 'tsx';
 const entry = join(root, 'src', 'index.ts');
 
-const result = spawnSync(tsx, [entry, ...process.argv.slice(2)], {
+// tsx resolves tsconfig.json from the cwd, so when launched from another directory it
+// would miss this project's "jsx": "react-jsx" setting — pin it explicitly.
+const tsconfig = join(root, 'tsconfig.json');
+
+const result = spawnSync(tsx, ['--tsconfig', tsconfig, entry, ...process.argv.slice(2)], {
   stdio: 'inherit',
   cwd: process.cwd(),
   env: process.env,

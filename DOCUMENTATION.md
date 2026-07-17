@@ -3,9 +3,12 @@
 ### Conception, architecture et ingénierie de fiabilité pour petits modèles
 
 > **Document de référence / research paper interne**
-> Version 0.1.0 · 16 juillet 2026 · Cible : Qwen 3.5 9B via Ollama 0.32
+> Version 0.1.0 · mise à jour le 17 juillet 2026 (faits d'environnement vérifiés le 16 juillet 2026) · Cible : Qwen 3.5 9B via Ollama 0.32
 > Ce document explique *pourquoi* le projet existe, *comment* il est conçu, et *où* il en est.
-> Il complète (sans les remplacer) [PLAN.md](PLAN.md), [docs/CONTRACTS.md](docs/CONTRACTS.md) et [docs/RUNTIME_API.md](docs/RUNTIME_API.md).
+> Pour l'installation et l'usage courant, voir [README.md](README.md). Ce document complète (sans les remplacer)
+> [docs/CONTRACTS.md](docs/CONTRACTS.md) et [docs/RUNTIME_API.md](docs/RUNTIME_API.md) — les spécifications de
+> build d'origine (`PLAN.md`, `CONCEPT.md`) ont été retirées du dépôt une fois leur objectif atteint ; ce document
+> en est désormais la synthèse à jour.
 
 ---
 
@@ -120,14 +123,15 @@ flowchart TB
 
     subgraph L1["① Interface"]
         direction TB
-        CLI["index.ts · CLI — à venir"]
-        TUI["tui/* · Ink + React — à venir"]
+        BIN["bin/qwen-harness.js · CLI globale"]
+        CLI["index.ts · parsing CLI"]
+        TUI["tui/* · Ink + React"]
         WEB["server/ + web/ · SSE — Phase 2"]
     end
 
     subgraph L2["② Cœur headless · src/core"]
         direction TB
-        AGENT["agent.ts · boucle agentique — à venir"]
+        AGENT["agent.ts · boucle agentique"]
         CLIENT["client.ts · wrapper ollama-js"]
         CTX["context.ts · budget & compaction"]
         PERM["permissions.ts · allow/ask/deny"]
@@ -150,8 +154,9 @@ flowchart TB
 
     O[("Ollama · /api/chat natif<br/>Qwen 3.5 9B")]
 
-    U --> TUI
     U --> CLI
+    U --> BIN
+    BIN --> CLI
     CLI --> TUI
     TUI --> AGENT
     WEB --> AGENT
@@ -165,13 +170,13 @@ flowchart TB
     REG --> FS
     REG --> SEARCH
     REG --> BASH
-    AGENT --> IMG
+    TUI --> IMG
     CONFIG --> AGENT
 ```
 
 ### 4.1 Les contrats entre modules (les « seams »)
 
-Tout le code est écrit **contre des interfaces** définies dans `src/core/types.ts`, ce qui a permis de développer les modules en parallèle. Les six factories du cœur (`createClient`, `createRegistry`, `createPermissions`, `createContext`, `createSessionStore`, `createAgent`) sont assemblées par la boucle d'agent.
+Tout le code est écrit **contre des interfaces** définies dans `src/core/types.ts`, ce qui a permis de développer les modules en parallèle. `agent.ts` (`createAgent`) ne construit aucune de ses dépendances : il les **reçoit** déjà construites. C'est la couche hôte — aujourd'hui [src/tui/App.tsx](src/tui/App.tsx) (lignes 86-99) — qui assemble les cinq autres factories (`createClient`, `createRegistry`, `createPermissions`, `createContext`, `createSessionStore`) puis les passe à `createAgent` ; en Phase 2, ce sera le serveur web qui jouera ce rôle de composition, sans toucher au cœur.
 
 ```mermaid
 classDiagram
@@ -221,11 +226,9 @@ classDiagram
 
 ## 5. Le cœur agentique
 
-### 5.1 La boucle d'agent
+### 5.1 La boucle d'agent — [src/core/agent.ts](src/core/agent.ts)  ✅ implémenté (258 lignes)
 
-C'est l'orchestrateur. À chaque tour, il envoie l'historique au modèle, **accumule** le stream (`thinking` puis `content` puis `tool_calls`), et si le modèle demande des outils, les fait passer par le filtre de permissions, les exécute, réinjecte les résultats en `role:'tool'`, et recommence — jusqu'à ce que le modèle réponde sans outil, ou que la limite de **25 tours** soit atteinte.
-
-> **⚠️ Statut :** `agent.ts` n'est **pas encore implémenté** (vague 3). Le diagramme ci-dessous décrit le contrat cible spécifié dans [CONTRACTS.md](docs/CONTRACTS.md) §7.
+C'est l'orchestrateur. À chaque tour, il envoie l'historique au modèle, **accumule** le stream (`thinking` puis `content` puis `tool_calls`), et si le modèle demande des outils, les fait passer par le filtre de permissions, les exécute **l'un après l'autre**, réinjecte les résultats en `role:'tool'`, et recommence — jusqu'à ce que le modèle réponde sans outil, ou que la limite de **`config.maxTurns` tours** (défaut 25, relue en direct à chaque itération) soit atteinte.
 
 ```mermaid
 sequenceDiagram
@@ -239,8 +242,8 @@ sequenceDiagram
     participant X as context.ts
 
     U->>A: send(userText, images?)
-    A->>X: maybeCompact() si ≥ 75%
-    loop ≤ 25 tours
+    loop ≤ maxTurns tours (défaut 25)
+        A->>X: maybeCompact() si ≥ 75% (à CHAQUE tour, pas une seule fois)
         A->>C: chat({messages, tools, num_ctx, think})
         C->>O: POST /api/chat (stream:true)
         O-->>C: chunks — thinking (Δ), content (Δ)
@@ -250,13 +253,20 @@ sequenceDiagram
 
         alt le modèle appelle des outils
             loop pour chaque tool_call
+                A->>A: onToolStart (aperçu affiché par la TUI)
                 A->>P: check({tool, detail})
                 alt decision = ask
                     A->>U: onAskPermission()
                     U-->>A: allow / deny (+ always ?)
+                else pas de callback fourni
+                    A->>A: decision = deny (défaut sûr)
                 end
-                A->>R: dispatch(call, ctx)
-                R-->>A: ToolResult {ok, content}
+                alt decision = deny
+                    A->>A: ToolResult synthétique {ok:false} — PAS de dispatch
+                else decision = allow
+                    A->>R: dispatch(call, ctx)
+                    R-->>A: ToolResult {ok, content}
+                end
                 A->>X: capToolOutput(content)
                 A->>A: push message role:'tool'
             end
@@ -267,10 +277,16 @@ sequenceDiagram
     A->>A: session.save() + appendFtRecord(succès)
 ```
 
-Points clés du contrat :
+Points clés du contrat, tels qu'implémentés :
 - **Accumulation du stream** : chaque chunk porte un *delta*. La boucle recompose un seul `Message` assistant (thinking + content + tool_calls) avant de le pousser dans l'historique.
-- **Appels parallèles** : Qwen peut émettre plusieurs `tool_calls` sur un tour ; chacun est vérifié et exécuté, chaque résultat renvoyé en `{role:'tool', tool_name, content}` (**pas de `tool_call_id`** dans l'API native).
-- **Usage du contexte** affiché en continu via `prompt_eval_count`/`eval_count` du chunk final.
+- **Plusieurs appels d'outils par tour** : Qwen peut émettre plusieurs `tool_calls` sur un tour ; chacun est vérifié et exécuté **l'un après l'autre** (pas de concurrence), chaque résultat renvoyé en `{role:'tool', tool_name, content}` (**pas de `tool_call_id`** dans l'API native).
+- **`onToolStart` avant la vérification de permission** : l'événement est émis avant l'appel à `permissions.check`, pour que la TUI puisse afficher l'aperçu (diff) *pendant* qu'elle demande l'autorisation.
+- **`ask` sans callback = refus** : si `events.onAskPermission` n'est pas fourni, une décision `ask` se dégrade silencieusement en `deny` plutôt que de bloquer la boucle.
+- **« toujours autoriser » (`a`)** : appelle `permissions.addRule({pattern: req.detail, decision:'allow'})` avec la chaîne *exacte* de la commande/du chemin — cela ne matche donc à nouveau que cette action précise, pas une classe d'actions (pas de généralisation en préfixe ou en dossier).
+- **Refus = court-circuit** : un appel refusé ne passe jamais par `registry.dispatch` ; un `ToolResult` synthétique est renvoyé directement au modèle.
+- **Usage du contexte** affiché en continu via `prompt_eval_count`/`eval_count` du chunk final (`eval_count` est capté mais non consommé plus loin dans la boucle actuelle).
+- **Fin de tour** : au plus un message de clôture est ajouté — soit une erreur interne, soit `[Reached max turns (N). Stopping.]` en cas d'épuisement des tours — jamais les deux.
+- **Persistance** : `session.save()` puis `session.appendFtRecord({system, tools, messages, mode, model, success})`, enveloppés dans un `try/catch` qui ne remonte jamais d'exception hors de `send()`.
 
 ### 5.2 Le client Ollama — [src/core/client.ts](src/core/client.ts)  ✅ implémenté
 
@@ -284,7 +300,7 @@ Fusion à précédence croissante, sans jamais lever d'exception sur fichier man
 DEFAULT_CONFIG  ←  ~/.qwen-harness/config.json  ←  ./.qwen-harness.json  ←  overrides CLI
 ```
 
-Défauts : modèle `qwen3.5:latest`, `numCtx` 32768, `maxTurns` 25, sampling Modelfile (`temp 1, top_p 0.95, top_k 20, presence_penalty 1.5`), `think: true`. Les objets imbriqués (`sampling`, `permissions`) sont fusionnés en profondeur.
+Défauts : modèle `qwen3.5:latest`, `numCtx` 32768, `maxTurns` 25, sampling Modelfile (`temp 1, top_p 0.95, top_k 20, presence_penalty 1.5`), `think: true`. Les objets imbriqués (`sampling`, `permissions`) sont fusionnés en profondeur — à une exception près : si une couche fournit `permissions.rules`, ce tableau **remplace** entièrement celui de la couche précédente plutôt que de le compléter.
 
 ---
 
@@ -323,7 +339,7 @@ flowchart TD
 3. **Fuzzy ligne-à-ligne** — compare les lignes *trimmées* ; disambiguë parfois là où la normalisation avait sur-collapsé.
 4. **Échec** — `buildNotFoundError` cherche via *plus longue sous-chaîne commune* la ligne la plus ressemblante et l'affiche avec son contexte, pour guider le retry.
 
-`applyStrReplace` est une fonction **pure et déterministe** — d'où sa testabilité unitaire (prévue en vague 1d).
+`applyStrReplace` est une fonction **pure et déterministe** — d'où sa testabilité unitaire : [src/tools/fs.test.ts](src/tools/fs.test.ts) couvre 7 cas (chaîne vide, match exact unique, doublon exact, match espaces-normalisés, match fuzzy tolérant à l'indentation, erreur actionnable en cas d'échec, préservation du contenu autour d'un remplacement). `edit_file` attend précisément les clés d'argument `{path, old, new}`.
 
 ### 6.2 Validation des arguments + erreurs actionnables — [src/tools/registry.ts](src/tools/registry.ts)  ✅
 
@@ -390,8 +406,9 @@ flowchart TD
 - **Mode `yolo`** : tout autorisé sauf les interdits durs.
 - **Mode `normal`** : les règles glob (`req.detail`) l'emportent (premier match) ; sinon lecture = `allow`, écriture = `ask`.
 - **Défense en profondeur** : `fs.ts` re-refuse `.env` et toute sortie du `cwd`, indépendamment des permissions — deux barrières valent mieux qu'une.
+- **⚠️ Angle mort connu** : cette défense en profondeur n'est *pas* uniforme. `search.ts` a son propre garde-fou de chemin (`resolveWithinCwd`) sans exclusion `.env`, et côté permissions, la requête pour l'outil `search` porte comme `detail` la **requête texte**, pas le chemin/glob ciblé — un `search` dont le glob cible `.env` mais dont la requête ne contient pas littéralement `.env` **contourne le refus dur** et peut renvoyer des lignes de `.env`. `list_files` peut de même énumérer un nom de fichier `.env` en mode `plan`/`vision`. Seuls `read_file`/`write_file`/`edit_file`/`move_file` sont protégés de façon fiable (détail en §13).
 
-L'`addRule()` permet à la TUI de matérialiser un « toujours autoriser » en règle persistante pour la session.
+L'`addRule()` permet à la TUI de matérialiser un « toujours autoriser » en règle persistante pour la session — la règle ajoutée matche la **chaîne exacte** de l'action (pas de généralisation en glob), voir §5.1.
 
 ---
 
@@ -406,12 +423,13 @@ Volontairement **exactement sept** (principe P3). Au-delà, un 9B choisit mal.
 | `edit_file` | fs.ts | `str_replace` progressif | matching 3 niveaux, erreurs actionnables |
 | `move_file` | fs.ts | déplacer/renommer | 2 chemins validés |
 | `list_files` | search.ts | lister par glob | skip `node_modules/.git/dist`, cap 500 |
-| `search` | search.ts | grep contenu | ripgrep si dispo, **sinon fallback JS**, cap 200 |
-| `bash` | bash.ts | commande shell | timeout 120 s, cwd projet, sortie tronquée 20K |
+| `search` | search.ts | grep contenu | ripgrep si dispo (timeout 30 s), **sinon fallback JS** (pas de timeout mur, seulement l'`AbortSignal`) ; cap 200 résultats, lignes tronquées à 300 caractères en mode fallback uniquement |
+| `bash` | bash.ts | commande shell | timeout 120 s par défaut (l'argument `timeout` fourni par le modèle n'est pas plafonné), cwd projet, stdout+stderr fusionnés et tronqués à 20 000 caractères (tête+queue) |
 
-Deux détails d'ingénierie notables :
-- **`search` dégrade gracieusement** : il détecte `rg` sur le PATH et sinon exécute un balayage JS équivalent (marche même sans ripgrep installé).
-- **`bash` est borné** sur trois axes : temps (timeout + `SIGKILL`), espace (troncature tête/queue), et lieu (`cwd` = racine projet), et honore l'`AbortSignal`.
+Trois détails d'ingénierie notables :
+- **`search` dégrade gracieusement** : il détecte `rg` sur le PATH et sinon exécute un balayage JS équivalent (marche même sans ripgrep installé) — mais seul le chemin `ripgrep` a un timeout mur (30 s, `SIGKILL`) ; le fallback JS ne s'arrête que sur `AbortSignal`.
+- **`bash` est borné** sur trois axes : temps (timeout + `SIGKILL`), espace (troncature tête/queue), et lieu (`cwd` = racine projet), et honore l'`AbortSignal` — mais le plafond de temps n'est qu'un *défaut* : rien ne borne la valeur que le modèle peut demander via l'argument `timeout`.
+- **`search`/`list_files` et `.env`** : voir l'angle mort documenté en §7/§13 — ces deux outils ne sont pas protégés contre l'exposition de `.env` de la même façon que les quatre outils fichiers.
 
 ---
 
@@ -439,14 +457,18 @@ flowchart LR
     Chat --> NONE
 ```
 
-| Mode | Outils | `think` | Usage |
-|---|---|---|---|
-| **code** | les 7 | `true` | codage agentique complet |
-| **vision** | 3 lecture | défaut | décrire/analyser des images + contexte projet |
-| **plan** | 3 lecture | défaut | investiguer et proposer un plan, **sans jamais écrire** |
-| **chat** | aucun | `false` | conversation simple |
+| Mode | Outils | Usage |
+|---|---|---|
+| **code** | les 7 | codage agentique complet |
+| **vision** | 3 lecture | décrire/analyser des images + contexte projet |
+| **plan** | 3 lecture | investiguer et proposer un plan, **sans jamais écrire** |
+| **chat** | aucun | conversation simple |
 
 Le mode `plan` a une double sécurité : le registry ne lui expose que les outils de lecture, **et** le moteur de permissions refuse tout write. Voir [src/core/prompts.ts](src/core/prompts.ts) pour les prompts (courts, par principe P3).
+
+`think` n'est **pas** un réglage propre par mode : au lancement (CLI ou config), `config.think` vaut simplement `DEFAULT_CONFIG.think` (`true`) pour les quatre modes, sauf override explicite — `--mode` ne le touche pas. Ce n'est qu'en changeant de mode **en cours de session** via `/mode` que `defaultThinkFor(mode)` (`src/core/config.ts:33-35`) s'applique — et cette fonction traite `chat`, `vision` et `plan` de façon strictement identique (`false`) ; seul `code` en diffère (`true`).
+
+⚠️ **Deux axes indépendants** : le mode d'agent `plan` (`AgentMode`, contrôle prompt système + outils exposés, modifiable en cours de session via `/mode`) et le mode de permissions `plan` (`PermissionConfig.mode`, contrôle les décisions `allow`/`ask`/`deny`) sont deux réglages distincts. Le mode de permissions se règle **uniquement au lancement**, via `--yolo` / `--plan-perms` en CLI ou un fichier de config — il est figé pour toute la durée de la session TUI ; `/permissions` n'en affiche que la valeur courante et les règles, **il ne le modifie pas**. Rien ne synchronise automatiquement les deux axes — combiner `--mode plan` et `--plan-perms` au lancement donne la garantie maximale en investigation.
 
 ---
 
@@ -454,7 +476,9 @@ Le mode `plan` a une double sécurité : le registry ne lui expose que les outil
 
 ### 10.1 Sessions + log d'entraînement — [src/core/session.ts](src/core/session.ts)  ✅
 
-Chaque session est sauvée en JSON, et **en parallèle** un `finetune.jsonl` append-only collecte, dès le jour 1 (principe P7), des enregistrements au format d'entraînement : prompt système, schémas d'outils, messages avec `tool_calls` en **objets** (pas en chaînes), et un **flag succès/échec** par session.
+Chaque session est sauvée en JSON (`~/.qwen-harness/sessions/<id>.json`), et **en parallèle** un `finetune.jsonl` append-only collecte, dès le jour 1 (principe P7), un enregistrement par session : `{system, tools, messages, mode, model, success}` — prompt système, schémas d'outils, messages avec `tool_calls` en **objets** (pas en chaînes), le mode et le modèle utilisés, et un **flag succès/échec**.
+
+Deux nuances d'implémentation : le champ `Session.mode` est figé au moment de la création de l'agent et n'est **pas** resynchronisé si le mode change en cours de session via `/mode` (contrairement au prompt système et aux schémas d'outils, relus en direct à chaque tour, et au champ `mode` du *record* FT, lui aussi live) ; et `title` n'existe **pas** sur le type `Session` lui-même (`{id, createdAt, mode, messages}`) — il n'apparaît que sur le type de retour de `SessionStore.list()` et sur l'interface `SessionSummary` de la TUI (`src/tui/commands.ts`), utilisées pour afficher `/sessions` ; une session persistée par `session.save()` n'a donc jamais de titre.
 
 ### 10.2 Le volant (Phase 4)
 
@@ -484,9 +508,9 @@ Le modèle fine-tuné (`qwen3.5-victor`) est réinjecté dans Ollama et devient 
 flowchart LR
     P0["Phase 0<br/>Scaffold"]:::done
     P1a["Phase 1a<br/>Cœur : client, config, prompts,<br/>permissions, context, session,<br/>7 tools, media"]:::done
-    P1b["Phase 1b<br/>agent.ts<br/>(boucle agentique)"]:::todo
-    P1c["Phase 1c<br/>TUI Ink<br/>+ index.ts (CLI)"]:::todo
-    P1d["Phase 1d<br/>tests vitest<br/>+ E2E réel"]:::todo
+    P1b["Phase 1b<br/>agent.ts<br/>(boucle agentique)"]:::done
+    P1c["Phase 1c<br/>TUI Ink<br/>+ index.ts (CLI)<br/>+ bin/qwen-harness.js"]:::done
+    P1d["Phase 1d<br/>tests vitest<br/>+ E2E réel"]:::partial
     P2["Phase 2<br/>UI web<br/>par catégories"]:::future
     P3["Phase 3<br/>Multimodal<br/>vidéo/audio"]:::future
     P4["Phase 4<br/>Fine-tuning<br/>LoRA"]:::future
@@ -494,7 +518,7 @@ flowchart LR
     P0 --> P1a --> P1b --> P1c --> P1d --> P2 --> P3 --> P4
 
     classDef done fill:#1f7a3d,color:#fff,stroke:#0d3d1e;
-    classDef todo fill:#b8860b,color:#fff,stroke:#5c4407;
+    classDef partial fill:#b8860b,color:#fff,stroke:#5c4407;
     classDef future fill:#2b3a55,color:#dde,stroke:#16202f;
 ```
 
@@ -514,29 +538,35 @@ flowchart LR
 | Outil bash | `src/tools/bash.ts` | ✅ implémenté |
 | Registry | `src/tools/registry.ts` | ✅ implémenté |
 | Media images | `src/media/images.ts` | ✅ implémenté |
-| **Boucle d'agent** | `src/core/agent.ts` | ⬜ **à écrire** (vague 3) |
-| **TUI Ink** | `src/tui/*` | ⬜ **à écrire** (vague 4) |
-| **Entrée CLI** | `src/index.ts` | ⬜ **à écrire** |
-| **Smoke test** | `scripts/smoke.ts` | ⬜ **à écrire** |
-| **Tests unitaires** | `*.test.ts` | ⬜ **à écrire** |
+| Boucle d'agent | `src/core/agent.ts` (258 lignes) | ✅ implémenté |
+| TUI Ink | `src/tui/App.tsx`, `commands.ts`, `components.tsx` | ✅ implémenté |
+| Entrée CLI | `src/index.ts` | ✅ implémenté |
+| CLI globale | `bin/qwen-harness.js` (+ champ `bin` de `package.json`) | ✅ implémenté |
+| Smoke test | `scripts/smoke.ts` | ✅ implémenté |
+| **Tests unitaires** | `src/tools/fs.test.ts` (7 cas, `applyStrReplace` uniquement) | 🟡 **partiel** — `search.ts`, `bash.ts`, `registry.ts` et toute la couche TUI/CLI n'ont aucun test |
 
-> **Où en est-on ?** Toutes les briques du cœur et les outils sont posés et se compilent. Il manque **le liant** — la boucle d'agent qui les orchestre — puis la TUI et le point d'entrée `npm start`. C'est le chemin critique immédiat.
+> **Où en est-on ?** Le liant est posé : la boucle d'agent orchestre le cœur et les 7 outils, la TUI Ink tourne via `npm start` ou la commande globale `qwen-harness` (après `npm link`). Le chemin critique restant est la **couverture de test** (vague 1d, aujourd'hui partielle) avant de considérer la Phase 1 close, puis la Phase 2 (UI web) et au-delà.
 
 ### Scripts npm disponibles
 
 | Script | Commande | Rôle |
 |---|---|---|
-| `npm start` | `tsx src/index.ts` | lancer la TUI *(entrée à créer)* |
+| `npm start` | `tsx src/index.ts` | lancer la TUI |
 | `npm run dev` | `tsx watch src/index.ts` | dev avec reload |
 | `npm run typecheck` | `tsc --noEmit` | vérif types (critère de vague) |
-| `npm test` | `vitest run` | tests *(à écrire)* |
-| `npm run smoke` | `tsx scripts/smoke.ts` | smoke streaming *(à écrire)* |
+| `npm test` | `vitest run` | tests unitaires (couverture partielle, voir ci-dessus) |
+| `npm run test:watch` | `vitest` | tests en mode watch |
+| `npm run smoke` | `tsx scripts/smoke.ts` | smoke streaming, sans TUI |
+
+Le champ `bin` de `package.json` mappe la commande `qwen-harness` vers `bin/qwen-harness.js` ; après `npm link` (ou une installation globale), `qwen-harness` fonctionne comme commande depuis n'importe quel répertoire — voir [README.md](README.md).
 
 ---
 
 ## 12. Critères de vérification
 
-Repris de [PLAN.md](PLAN.md) §8 — ce qui prouve que chaque phase fonctionne réellement :
+Critères d'origine du plan de build (`PLAN.md`, désormais retiré du dépôt — repris ici pour mémoire) — ce qui prouve que chaque phase fonctionne réellement :
+
+> Ces vérifications sont désormais exécutables de bout en bout via `npm start` ou la commande globale `qwen-harness` (voir [README.md](README.md)) ; aucune n'a encore été formellement rejouée et consignée dans ce document.
 
 - **Contexte** : au lancement, `ollama ps` doit montrer **32K**, jamais 4096.
 - **Boucle E2E** : dans un bac à sable, « crée `hello.ts` qui affiche la date et exécute-le » → `write_file` + `bash` avec approbations ; puis « renomme en `date.ts`, corrige l'import » → `edit_file`/`move_file`.
@@ -551,15 +581,19 @@ Repris de [PLAN.md](PLAN.md) §8 — ce qui prouve que chaque phase fonctionne r
 ## 13. Risques & limites
 
 1. **16 Go de RAM = la vraie contrainte.** Tout le design (contexte 32K par défaut, compaction agressive, caps de sortie) découle de là.
-2. **Fiabilité d'un 9B en agentique** — mitigée mais non éliminée : peu d'outils, descriptions courtes, erreurs actionnables, validation + retry ; secours prévu façon *architecte/éditeur* d'aider (2ᵉ appel dédié à l'application des edits) si l'édition échoue trop.
+2. **Fiabilité d'un 9B en agentique** — mitigée mais non éliminée : peu d'outils, descriptions courtes, erreurs actionnables, validation + retry. Le secours façon *architecte/éditeur* d'aider (2ᵉ appel dédié à l'application des edits) n'est **pas implémenté** ; en l'état, un échec répété d'`edit_file` retombe uniquement sur les erreurs actionnables du matching progressif.
 3. **Multimodal partiel** : Ollama = texte + images seulement. Audio/vidéo repoussés en Phase 3 via pipelines externes (`ffmpeg`, `whisper.cpp`).
-4. **Facts non contre-vérifiés indépendamment** : les hypothèses ci-dessus s'appuient sur les docs Ollama/HuggingFace du 16/07/2026 — *le code tranchera à l'implémentation*, notamment la boucle d'agent encore à écrire.
+4. **Angle mort `.env` sur `search`/`list_files`** : contrairement aux quatre outils fichiers, `search` et `list_files` ne sont pas protégés de façon fiable contre l'exposition du contenu ou des noms de fichiers `.env` (détail en §7/§8). À corriger avant tout usage sur un dépôt contenant des secrets réels.
+5. **Aperçu d'écriture = pas un vrai diff** : `buildToolPreview` (TUI, `src/tui/components.tsx`) affiche le contenu brut tronqué à 600 caractères pour `write_file`, ou un bloc `-ancien`/`+nouveau` naïf tronqué à 200 caractères par côté pour `edit_file` — pas un diff ligne-à-ligne calculé. Suffisant pour un premier coup d'œil, insuffisant pour relire en détail une édition complexe avant de l'approuver.
+6. **Couverture de test partielle** : seul `applyStrReplace` (`src/tools/fs.ts`) a des tests unitaires (7 cas dans `fs.test.ts`). `search.ts`, `bash.ts`, `registry.ts`, et toute la couche `src/tui/*` / `src/index.ts` / `bin/qwen-harness.js` n'ont aucun test automatisé à ce jour.
+7. **Timeout `bash` non plafonné côté appelant** : l'argument optionnel `timeout` n'est validé que comme un entier positif — un appel du modèle peut donc demander un délai arbitrairement long, contournant de fait le garde-fou par défaut de 120 s.
+8. **Facts non contre-vérifiés indépendamment** : les hypothèses d'environnement (§2) s'appuient sur les docs Ollama/HuggingFace, vérifiées une fois sur la machine cible le 16/07/2026 — à recontrôler si l'environnement (version d'Ollama, du modèle, du matériel) change.
 
 ---
 
 ## 14. Conclusion
 
-`qwen-harness` fait le pari qu'avec le bon échafaudage — matching d'édition tolérant, validation + erreurs actionnables, budget de contexte, permissions à interdits durs, et un jeu d'outils délibérément minimal — un modèle **9B local** peut faire du travail agentique de codage *utile*, à **coût marginal nul** et **code source intégralement possédé**. Les fondations (client, outils, permissions, contexte, sessions) sont en place ; la prochaine étape critique est la **boucle d'agent** qui les orchestre, puis la **TUI** lançable via `npm start`. À plus long terme, le log JSONL d'entraînement transforme l'usage quotidien en **corpus de fine-tuning**, fermant la boucle d'indépendance vis-à-vis des LLM cloud.
+`qwen-harness` fait le pari qu'avec le bon échafaudage — matching d'édition tolérant, validation + erreurs actionnables, budget de contexte, permissions à interdits durs, et un jeu d'outils délibérément minimal — un modèle **9B local** peut faire du travail agentique de codage *utile*, à **coût marginal nul** et **code source intégralement possédé**. Les fondations (client, outils, permissions, contexte, sessions), la **boucle d'agent** et la **TUI** (lançable via `npm start` ou la commande globale `qwen-harness`) sont désormais toutes en place. La prochaine étape critique n'est plus l'implémentation mais la **preuve** : couverture de test complète (aujourd'hui partielle, §13), vérification E2E réelle sur machine (§12), puis correction de l'angle mort `.env` sur `search`/`list_files` (§7/§13). À plus long terme, le log JSONL d'entraînement transforme l'usage quotidien en **corpus de fine-tuning**, fermant la boucle d'indépendance vis-à-vis des LLM cloud.
 
 ---
 
@@ -574,7 +608,13 @@ Repris de [PLAN.md](PLAN.md) §8 — ce qui prouve que chaque phase fonctionne r
 
 ### Annexe B — Fichiers de référence
 
-- [CONCEPT.md](CONCEPT.md) — vision et objectifs initiaux.
-- [PLAN.md](PLAN.md) — plan de build, source de vérité des agents.
+- [README.md](README.md) — installation, démarrage rapide, usage courant.
 - [docs/CONTRACTS.md](docs/CONTRACTS.md) — interfaces TypeScript entre modules.
 - [docs/RUNTIME_API.md](docs/RUNTIME_API.md) — surface de librairie vérifiée + contrats d'export par fichier.
+
+> `CONCEPT.md` (vision et objectifs initiaux) et `PLAN.md` (plan de build, source de vérité des agents pendant la
+> construction) ont été retirés du dépôt une fois leur objectif atteint ; ce document (`DOCUMENTATION.md`) en est
+> la synthèse à jour et fait foi. Notez que `docs/CONTRACTS.md` et `docs/RUNTIME_API.md` restent des
+> spécifications figées, écrites *avant* l'implémentation : quelques détails mineurs ont dévié en pratique (par
+> exemple `ToolRegistry` est défini dans `src/tools/registry.ts` et non `types.ts`, et `PermissionChecker` a
+> gagné un `addRule` optionnel) — ce document reflète le code réel.
