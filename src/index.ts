@@ -6,6 +6,7 @@ import type { AgentMode, Config } from './core/types';
 import { createApp } from './tui/App';
 
 const VALID_MODES: readonly AgentMode[] = ['code', 'chat', 'vision', 'plan'];
+const VALID_PERMISSION_MODES: readonly Config['permissions']['mode'][] = ['plan', 'normal', 'yolo'];
 
 function printHelp(): void {
   console.log(`qwen-harness — local agentic coding harness for Qwen 3.5 via Ollama
@@ -15,17 +16,20 @@ Usage:
   qwen-harness [options]
 
 Options:
-  --model <name>       Ollama model (default: qwen3.5:latest)
-  --mode <mode>        Agent mode: code | chat | vision | plan (default: code)
-  --num-ctx <n>        Context window size (default: 32768)
-  --host <url>         Ollama host (default: http://localhost:11434)
-  --yolo               Enable yolo permission mode (allow all except hard denies)
-  --plan-perms         Enable plan permission mode (read-only)
-  --help, -h           Show this help
+  --model <name>        Ollama model (default: qwen3.5:latest)
+  --mode <mode>         Agent mode: code | chat | vision | plan (default: code)
+  --num-ctx <n>         Context window size (default: 32768)
+  --host <url>          Ollama host (default: http://localhost:11434)
+  --permission <mode>   Permission mode: plan | normal | yolo (default: normal)
+                        yolo skips all authorization prompts except hard denies
+  --yolo                Shorthand for --permission yolo
+  --plan-perms          Shorthand for --permission plan
+  --help, -h            Show this help
 
 Examples:
   qwen-harness
   qwen-harness --mode plan --model qwen3.5:latest
+  qwen-harness --permission yolo       Skip permission prompts (allow all except hard denies)
   npm run smoke                        Quick streaming smoke test (no TUI, from the repo)
 `);
 }
@@ -57,6 +61,17 @@ function parseArgs(argv: string[]): Partial<Config> | 'help' | undefined {
       case '--host':
         overrides.host = argv[++i];
         break;
+      case '--permission': {
+        const permMode = argv[++i] as Config['permissions']['mode'];
+        if (!VALID_PERMISSION_MODES.includes(permMode)) {
+          console.error(
+            `Unknown permission mode "${permMode}". Valid: ${VALID_PERMISSION_MODES.join(', ')}`
+          );
+          process.exit(1);
+        }
+        overrides.permissions = { mode: permMode, rules: [] };
+        break;
+      }
       case '--yolo':
         overrides.permissions = { mode: 'yolo', rules: [] };
         break;
