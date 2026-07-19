@@ -597,6 +597,98 @@ Original criteria from the build plan (`PLAN.md`, since removed from the reposit
 
 ---
 
+## 15. From `ollama-code` in the terminal to the first prompt
+
+What actually happens between you pressing Enter after typing `ollama-code` and the TUI showing you a `>` prompt. Every step is grounded in a real file in the repo.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant Sh as Shell (PATH)
+    participant N as node
+    participant BinJS as bin/ollama-code.js
+    participant TSX as tsx (esbuild JIT)
+    participant Idx as src/index.ts
+    participant Ink as Ink runtime
+    participant App as tui/App.tsx
+    participant O as Ollama daemon
+
+    U->>Sh: types `ollama-code [flags]`
+    Sh->>Sh: PATH lookup → npm bin symlink → bin/ollama-code.js
+    Sh->>N: node bin/ollama-code.js [flags]  (shebang)
+    N->>BinJS: run wrapper
+    BinJS->>TSX: spawnSync tsx --tsconfig <root>/tsconfig.json src/index.ts [flags]
+    Note over BinJS,TSX: cwd = user's cwd; stdio = inherit
+    TSX->>Idx: JIT-compile & execute
+    Idx->>Idx: parseArgs → Partial<Config>
+    Idx->>Idx: loadLogo() + renderBannerAnsi → stdout.write()
+    Note over Idx: banner is printed BEFORE Ink starts,<br/>so Ink can never re-paint over it
+    Idx->>Ink: render(createApp(parsed), { kittyKeyboard: 'auto' })
+    Ink->>App: mount
+    App->>App: loadConfig + createClient/Registry/Permissions/Context/Session → createAgent
+    App->>App: StatusBar mounts, InputLine cursor blinks
+    Note over Ink,U: stdin → raw mode; useInput now receives every keypress
+    U->>App: types "hi" + Enter
+    App->>App: submit() → agent.send("hi")
+    App->>O: client.chat({model, messages, tools, num_ctx: 32768, stream:true})
+    O-->>App: streaming chunks (thinking Δ, content Δ, tool_calls?)
+    App-->>U: live thinking + content rendered
+```
+
+Step by step:
+
+1. **Shell PATH resolution.** `ollama-code` sits in a directory listed in `$PATH` — typically `~/.nvm/.../bin/` after `npm link`, or `/usr/local/bin/` after a global install. npm installed a **symlink** there pointing at [bin/ollama-code.js](bin/ollama-code.js) — the file the `bin` field of [package.json](package.json) maps the command to.
+2. **Shebang → `node`.** `bin/ollama-code.js` starts with `#!/usr/bin/env node`. The kernel reads that first line and re-executes the file as `node bin/ollama-code.js …`.
+3. **The bin wrapper (26 lines).** Its only job is to launch `tsx` on `src/index.ts` no matter where you invoked `ollama-code` from:
+   - It looks up `node_modules/.bin/tsx` relative to *this package's root* (so `npm link` works without a global `tsx`), and falls back to a `tsx` on `PATH` if the local one is missing.
+   - It passes `--tsconfig <root>/tsconfig.json` explicitly, because tsx by default resolves `tsconfig.json` from the caller's `cwd` and would miss this project's `"jsx": "react-jsx"` setting.
+   - `cwd: process.cwd()` is **preserved** — the tools (`read_file`, `bash`, `list_files`…) operate on the directory you launched `ollama-code` from, not on the package's own directory.
+   - `stdio: 'inherit'` — terminal I/O is shared with the child, which is how Ink can put your keyboard in raw mode.
+4. **`tsx` runs `src/index.ts`.** No build step exists in this repo; `tsx` compiles TypeScript to JavaScript in memory via esbuild.
+5. **`main()` in [src/index.ts](src/index.ts).**
+   - `parseArgs(process.argv.slice(2))` walks the flags (`--model`, `--mode`, `--num-ctx`, `--host`, `--permission` / `--yolo` / `--plan-perms`, `--help`/`-h`) into a `Partial<Config>`. Unknown flags exit with code 1 and print the help.
+   - `loadLogo()` reads [assets/logo.svg](assets/logo.svg) (or the `.png` fallback), decodes it to a pixel grid, and `renderBannerAnsi(art, VERSION, columns)` writes the banner **straight to `process.stdout` before Ink is initialized**. This is deliberate: the banner used to live inside Ink's `<Static>`, which re-paints on every render — the timing of that write could smear the first pixel row over the shell prompt. Printing before Ink solves it permanently (commit `ab87adb`).
+   - `render(createApp(parsed), { kittyKeyboard: { mode: 'auto' } })` hands control to Ink. `kittyKeyboard: 'auto'` opts into the [kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/) when the terminal supports it (kitty, Ghostty, WezTerm), which is what makes real `Cmd+J/R/L` reach the app as `key.super`. On every other terminal, `Option+…` (`key.meta`) is the fallback.
+6. **`createApp(parsed)`** — one function in `src/index.ts`'s import graph. `loadConfig(parsed)` merges four layers in increasing precedence: `DEFAULT_CONFIG` ← `~/.ollama-code/config.json` ← `./.ollama-code.json` ← CLI overrides. Missing files are ignored (never throws). Then it returns `<App config={config} />`.
+7. **`App` mounts** — the single React functional component in [src/tui/App.tsx](src/tui/App.tsx):
+   - The `useMemo` at the top composes the entire headless core in one shot: `createClient({host})` (Ollama HTTP wrapper), `createRegistry()` (7 tools), `createPermissions(config.permissions)`, `createContext(config, client)`, `createSessionStore(~/.ollama-code/sessions)`, then `createAgent({...})` receives all five and returns the `Agent`. This is the "host composition role" described in §4.1.
+   - Ink switches stdin to raw mode; keys now flow through `useInput`.
+   - The initial render paints the `StatusBar` (`mode · model · ctx 0/32,768`), an empty log, the pixel-art footer, and the `InputLine` with a blinking cursor.
+8. **First message you send.** You type `hello`, press Enter, `submit()` runs. Since it doesn't start with `/`, it goes to `agent.send('hello')`, which:
+   - appends a `role:'user'` message,
+   - calls `client.chat({model, messages, tools, num_ctx, stream:true})` — POST `/api/chat` on `config.host`,
+   - streams `thinking` deltas then `content` deltas back through `events.onThinking` / `events.onContent`, which update the live blocks in App state, then agent loop §5.1 takes over.
+
+That's the full path from keystroke to first token.
+
+---
+
+## 16. Slash commands
+
+Every line starting with `/` is intercepted by the TUI (never sent to the model). The dispatch lives in [src/tui/commands.ts](src/tui/commands.ts) — a framework-free `switch`, testable without Ink — and every side effect flows through a `CommandActions` bridge implemented by `App.tsx` (`configRef` mutation, overlay state, notices).
+
+| Command | Argument | Effect |
+|---|---|---|
+| `/help` | — | Prints the command list with descriptions. |
+| `/mode` | — | Prints the current agent mode. |
+| `/mode <code\|chat\|vision\|plan>` | required | Switches the mode: writes `configRef.current.mode` (which the agent re-reads live on every turn) and resets `configRef.current.think` via `defaultThinkFor(mode)` (`true` for `code`, `false` for the others). Unknown value → notice listing the valid modes. See §9 — this does **not** change the permission mode. |
+| `/model` | — | Opens the **model picker overlay**. Fetches `GET /api/tags` via `OllamaClient.listModels()`, lists every installed model with parameter size · quantization · disk size, marks the active one `● current`, and starts the selection on it. Empty list → notice suggesting `ollama pull`. Daemon unreachable → notice with the error and the current model, no crash. Navigation `↑`/`↓`/`j`/`k` (wrap-around), `Enter` selects, `Esc`/`Ctrl+C` cancels. |
+| `/model <name>` | required | Direct setter: writes `configRef.current.model = name`. Effective on the next `client.chat()` call — the agent reads `config.model` live. |
+| `/image <path>` | required | Loads the image at `path` via `imageToBase64` and queues its base64 payload; queued images are sent alongside the next message, then cleared. Path is relative to cwd. Errors (missing file, unsupported format) become a notice, not a crash. |
+| `/clear` | — | Clears the displayed log (`setLog([])`) and any queued images. **Does not** reset the model's conversation history — the agent still remembers everything; only the TUI display is emptied. |
+| `/sessions` | — | Lists up to 20 saved sessions from `~/.ollama-code/sessions/`, showing `id`, `createdAt` and the optional `title`. Read-only; there is no "load" command yet. |
+| `/permissions` | — | Prints the current permission mode (`plan`/`normal`/`yolo`) and any active rules. **Display only** — the permission mode is set at launch (`--permission` / `--yolo` / `--plan-perms`) and frozen for the whole session. |
+| `/<anything else>` | — | Prints `Unknown command: /… Type /help for the list of commands.` Never leaks a typo to the model as a literal user message. |
+
+Notes on the mechanics:
+
+- **Live-config trick.** Mutations from `/mode` and `/model` write directly to `configRef.current` (a `useRef` in `App.tsx`) rather than triggering a state update. The agent reads `config.model` and `config.mode` on **every** call, so the change takes effect on the very next turn without any wiring between the command and the agent. The visible `StatusBar` refresh is driven by the accompanying `notice()` call (which does trigger a re-render).
+- **Overlays.** `/model` (picker) and the tool-permission prompt are the two interactive overlays. The `useInput` handler routes keys through a priority chain: permission prompt first, then the model picker, then global shortcuts (`Ctrl+C`, `Cmd+J/L/R`, `Ctrl+D`), then the input line. Each overlay **swallows** every key while active so nothing leaks into the input.
+- **Availability.** Slash commands are dispatched by `submit()`, which is gated by `if (busy) return`. Commands are available at any *idle* moment — including mid-session between two turns — but not while the agent is generating. To switch models mid-stream, abort with `Ctrl+C` first, then `/model`.
+
+---
+
 ### Appendix A — Glossary
 
 - **num_ctx**: context window size, in tokens, forced on every Ollama request.
