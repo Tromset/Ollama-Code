@@ -2,11 +2,103 @@
 
 import { Box, Text } from 'ink';
 import type { AgentMode, PermissionRequest } from '../core/types';
+import type { PixelArt } from './pixels';
+import {
+  PALETTE,
+  ROLES,
+  ROLE_WIDTH,
+  SUBTITLE,
+  WORDMARK,
+  WORDMARK_SPLIT,
+  WORDMARK_SPLIT_WIDTH,
+  WORDMARK_WIDTH,
+} from './theme';
 
 export interface UsageStats {
   used: number;
   max: number;
   pct: number;
+}
+
+export type LogKind = keyof typeof ROLES;
+
+/**
+ * Render half-block pixel art as one `<Text>` per terminal row.
+ *
+ * `wrap="truncate"` matters: Ink's default wrapping would reflow the art into garbage on a
+ * terminal narrower than the art, whereas truncating degrades to a clean vertical cut.
+ */
+export function Pixels({ art }: { art: PixelArt }): React.JSX.Element {
+  return (
+    // flexShrink={0}: inside a row, Ink would otherwise shrink the art and `truncate` would
+    // silently eat columns off the right edge.
+    <Box flexDirection="column" flexShrink={0} width={art.width}>
+      {art.rows.map((row, y) => (
+        <Text key={y} wrap="truncate">
+          {row.map((seg, x) => (
+            <Text key={x} color={seg.fg} backgroundColor={seg.bg}>
+              {seg.ch}
+            </Text>
+          ))}
+        </Text>
+      ))}
+    </Box>
+  );
+}
+
+/**
+ * Startup banner: mascot plus wordmark. Rendered once into `<Static>`, so it scrolls away
+ * as the conversation grows rather than occupying the viewport forever.
+ *
+ * The block wordmark is ~90 columns wide, so the layout steps down through progressively
+ * more compact variants rather than letting Ink wrap it into garbage.
+ */
+export function Banner(props: {
+  logo: PixelArt | null;
+  version: string;
+  columns: number;
+}): React.JSX.Element {
+  const { logo, version, columns } = props;
+  const subtitle = `${SUBTITLE}   ·   v${version}`;
+  const logoWidth = logo ? logo.width + 2 : 0;
+
+  const wordmark =
+    columns >= logoWidth + WORDMARK_WIDTH
+      ? WORDMARK
+      : columns >= logoWidth + WORDMARK_SPLIT_WIDTH
+        ? WORDMARK_SPLIT
+        : null;
+
+  const text = (
+    <Box flexDirection="column" marginLeft={logo ? 2 : 0}>
+      {wordmark ? (
+        wordmark.map((line, i) => (
+          <Text key={i} bold color={PALETTE.pink} wrap="truncate">
+            {line}
+          </Text>
+        ))
+      ) : (
+        <Text bold color={PALETTE.pink} wrap="truncate">
+          ollama-code
+        </Text>
+      )}
+      <Box marginTop={1}>
+        <Text color={PALETTE.dim} wrap="truncate">
+          {subtitle}
+        </Text>
+      </Box>
+    </Box>
+  );
+
+  // Side by side when both fit; otherwise stack the wordmark under the mascot.
+  const sideBySide = !logo || columns >= logoWidth + WORDMARK_SPLIT_WIDTH;
+
+  return (
+    <Box flexDirection={sideBySide ? 'row' : 'column'} marginBottom={1}>
+      {logo ? <Pixels art={logo} /> : null}
+      {text}
+    </Box>
+  );
 }
 
 export function StatusBar(props: {
@@ -16,21 +108,30 @@ export function StatusBar(props: {
   busy: boolean;
 }): React.JSX.Element {
   const { mode, model, usage, busy } = props;
-  const ctxColor = usage.pct >= 75 ? 'red' : usage.pct >= 50 ? 'yellow' : 'green';
+  const ctxColor =
+    usage.pct >= 75 ? PALETTE.err : usage.pct >= 50 ? PALETTE.yellow : PALETTE.green;
   return (
-    <Box borderStyle="single" borderColor="gray" paddingX={1} justifyContent="space-between">
-      <Text>
-        <Text bold>ollama-code</Text>
-        <Text dimColor> · </Text>
-        <Text color="cyan">{mode}</Text>
-        <Text dimColor> · </Text>
-        <Text>{model}</Text>
-        {busy ? <Text color="yellow"> · thinking…</Text> : null}
+    <Box
+      borderStyle="round"
+      borderColor={PALETTE.pink}
+      paddingX={1}
+      justifyContent="space-between"
+    >
+      <Text wrap="truncate">
+        <Text bold color={PALETTE.pink}>
+          ollama-code
+        </Text>
+        <Text color={PALETTE.faint}> · </Text>
+        <Text color={PALETTE.pinkLight}>{mode}</Text>
+        <Text color={PALETTE.faint}> · </Text>
+        <Text color={PALETTE.text}>{model}</Text>
+        {busy ? <Text color={PALETTE.yellow}> · thinking…</Text> : null}
       </Text>
-      <Text>
-        ctx <Text color={ctxColor}>{usage.used.toLocaleString()}</Text>
-        <Text dimColor>/{usage.max.toLocaleString()}</Text>
-        <Text dimColor> ({usage.pct}%)</Text>
+      <Text wrap="truncate">
+        <Text color={PALETTE.dim}>ctx </Text>
+        <Text color={ctxColor}>{usage.used.toLocaleString()}</Text>
+        <Text color={PALETTE.faint}>/{usage.max.toLocaleString()}</Text>
+        <Text color={PALETTE.faint}> ({usage.pct}%)</Text>
       </Text>
     </Box>
   );
@@ -42,21 +143,29 @@ export function PermissionPrompt(props: {
 }): React.JSX.Element {
   const { req, preview } = props;
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1} marginY={1}>
-      <Text bold color="yellow">
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor={PALETTE.yellow}
+      paddingX={1}
+      marginY={1}
+    >
+      <Text bold color={PALETTE.yellow}>
         Permission required: {req.tool}
       </Text>
-      <Text dimColor>{req.detail}</Text>
+      <Text color={PALETTE.dim}>{req.detail}</Text>
       {preview ? (
         <Box flexDirection="column" marginTop={1}>
-          <Text bold>Preview:</Text>
-          <Text>{preview}</Text>
+          <Text bold color={PALETTE.text}>
+            Preview:
+          </Text>
+          <Text color={PALETTE.text}>{preview}</Text>
         </Box>
       ) : null}
       <Box marginTop={1}>
-        <Text>
-          <Text color="green">y</Text> allow · <Text color="red">n</Text> deny ·{' '}
-          <Text color="cyan">a</Text> always allow
+        <Text color={PALETTE.dim}>
+          <Text color={PALETTE.green}>y</Text> allow · <Text color={PALETTE.err}>n</Text> deny ·{' '}
+          <Text color={PALETTE.pinkLight}>a</Text> always allow
         </Text>
       </Box>
     </Box>
@@ -69,82 +178,72 @@ export function ThinkingBlock(props: { text: string; collapsed: boolean }): Reac
   if (collapsed) {
     const lines = text.split('\n').length;
     return (
-      <Text dimColor italic>
+      <Text color={PALETTE.faint} italic>
         [thinking · {lines} line{lines === 1 ? '' : 's'}]
       </Text>
     );
   }
   return (
     <Box flexDirection="column">
-      <Text dimColor italic>
+      <Text color={PALETTE.faint} italic>
         ─ thinking ─
       </Text>
-      <Text dimColor>{text}</Text>
+      <Text color={PALETTE.faint}>{text}</Text>
     </Box>
   );
 }
 
+/**
+ * One log entry: a fixed-width role column, then the body. The rigid column is what makes
+ * a stream of mixed `you`/`ai`/`run` lines scan as a single conversation.
+ */
 export function LogLine(props: {
-  kind: 'user' | 'assistant' | 'tool' | 'notice' | 'error';
+  kind: LogKind;
   text: string;
   meta?: string;
   ok?: boolean;
 }): React.JSX.Element {
   const { kind, text, meta, ok } = props;
-  switch (kind) {
-    case 'user':
-      return (
-        <Box flexDirection="column" marginBottom={1}>
-          <Text bold color="blue">
-            you
+  const role = ROLES[kind];
+  const failed = ok === false;
+
+  const bodyColor =
+    failed || kind === 'error'
+      ? PALETTE.err
+      : kind === 'notice'
+        ? PALETTE.dim
+        : PALETTE.text;
+
+  return (
+    <Box marginBottom={1}>
+      <Box width={ROLE_WIDTH} marginRight={2} flexShrink={0}>
+        <Text bold color={role.color}>
+          {role.label}
+        </Text>
+      </Box>
+      <Box flexDirection="column" flexGrow={1}>
+        {meta ? (
+          <Text color={PALETTE.faint} italic>
+            {meta}
           </Text>
-          <Text>{text}</Text>
-        </Box>
-      );
-    case 'assistant':
-      return (
-        <Box flexDirection="column" marginBottom={1}>
-          <Text bold color="green">
-            assistant
-          </Text>
-          <Text>{text}</Text>
-        </Box>
-      );
-    case 'tool':
-      return (
-        <Box flexDirection="column" marginBottom={1}>
-          <Text bold color="magenta">
-            tool {meta}
-          </Text>
-          <Text color={ok === false ? 'red' : undefined}>{text}</Text>
-        </Box>
-      );
-    case 'notice':
-      return (
-        <Text dimColor italic>
+        ) : null}
+        <Text color={bodyColor} italic={kind === 'notice'}>
           {text}
         </Text>
-      );
-    case 'error':
-      return (
-        <Text color="red" bold>
-          {text}
-        </Text>
-      );
-    default:
-      return <Text>{text}</Text>;
-  }
+      </Box>
+    </Box>
+  );
 }
 
 export function InputLine(props: { value: string; disabled: boolean }): React.JSX.Element {
   const { value, disabled } = props;
   return (
-    <Box borderStyle="single" borderColor="blue" paddingX={1}>
+    <Box borderStyle="round" borderColor={PALETTE.pink} paddingX={1}>
       <Text>
-        <Text bold color="blue">
+        <Text bold color={PALETTE.pink}>
           {'> '}
         </Text>
-        <Text>{value}</Text>
+        <Text color={PALETTE.text}>{value}</Text>
         {!disabled ? <Text inverse> </Text> : null}
       </Text>
     </Box>
