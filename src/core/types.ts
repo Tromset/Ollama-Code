@@ -58,6 +58,15 @@ export interface Capabilities {
   thinking: boolean;
 }
 
+// One locally installed model, as reported by GET /api/tags (OllamaClient.listModels).
+export interface ModelInfo {
+  name: string; // e.g. "qwen3.5:latest"
+  sizeBytes: number; // on-disk blob size
+  parameterSize: string; // details.parameter_size, e.g. "8.2B"
+  quantization: string; // details.quantization_level, e.g. "Q4_K_M"
+  modifiedAt: string;
+}
+
 export interface Sampling {
   temperature: number; // 1
   top_p: number; // 0.95

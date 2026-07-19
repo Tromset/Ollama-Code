@@ -1,8 +1,9 @@
 // src/tui/components.tsx — presentational Ink components for the TUI.
 
 import { Box, Text } from 'ink';
-import type { AgentMode, PermissionRequest } from '../core/types';
+import type { AgentMode, ModelInfo, PermissionRequest } from '../core/types';
 import type { PixelArt } from './pixels';
+import { formatBytes } from './text';
 import { PALETTE, ROLES, ROLE_WIDTH } from './theme';
 
 export interface UsageStats {
@@ -103,6 +104,73 @@ export function PermissionPrompt(props: {
           <Text color={PALETTE.green}>y</Text> allow · <Text color={PALETTE.err}>n</Text> deny ·{' '}
           <Text color={PALETTE.pinkLight}>a</Text> always allow
         </Text>
+      </Box>
+    </Box>
+  );
+}
+
+/**
+ * Interactive overlay listing installed Ollama models. Windowed to `maxVisible` rows so a
+ * long list never outgrows Ink's dynamic frame (see the banner-flicker note in App.tsx).
+ */
+export function ModelPicker(props: {
+  models: ModelInfo[];
+  index: number; // selected row
+  currentModel: string; // active model, marked in the list
+  maxVisible: number; // windowing cap, computed by App from terminal rows
+}): React.JSX.Element {
+  const { models, index, currentModel, maxVisible } = props;
+
+  const max = Math.max(3, maxVisible);
+  const start = Math.min(
+    Math.max(0, index - Math.floor(max / 2)),
+    Math.max(0, models.length - max),
+  );
+  const visible = models.slice(start, start + max);
+  const hiddenAbove = start;
+  const hiddenBelow = Math.max(0, models.length - (start + max));
+
+  return (
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor={PALETTE.pink}
+      paddingX={1}
+      marginY={1}
+    >
+      <Text bold color={PALETTE.pink}>
+        Select a model ({models.length} installed)
+      </Text>
+      {hiddenAbove > 0 ? (
+        <Text color={PALETTE.faint} italic>
+          … {hiddenAbove} more above
+        </Text>
+      ) : null}
+      {visible.map((m, i) => {
+        const selected = start + i === index;
+        const meta = [m.parameterSize, m.quantization, formatBytes(m.sizeBytes)]
+          .filter(Boolean)
+          .join(' · ');
+        return (
+          <Text key={m.name} wrap="truncate">
+            <Text bold color={PALETTE.pink}>
+              {selected ? '❯ ' : '  '}
+            </Text>
+            <Text bold={selected} color={selected ? PALETTE.pink : PALETTE.text}>
+              {m.name}
+            </Text>
+            {meta ? <Text color={PALETTE.dim}>{'  '}{meta}</Text> : null}
+            {m.name === currentModel ? <Text color={PALETTE.green}> ● current</Text> : null}
+          </Text>
+        );
+      })}
+      {hiddenBelow > 0 ? (
+        <Text color={PALETTE.faint} italic>
+          … {hiddenBelow} more below
+        </Text>
+      ) : null}
+      <Box marginTop={1}>
+        <Text color={PALETTE.dim}>↑/↓ or j/k move · Enter select · Esc cancel</Text>
       </Box>
     </Box>
   );

@@ -87,11 +87,14 @@ Every file below imports shared types from `./types` (or `../core/types`). Exten
 - `export interface ChatChunk { thinking?: string; content?: string; tool_calls?: ToolCall[]; done: boolean;
   promptEvalCount?: number; evalCount?: number }`
 - `export interface OllamaClient { chat(p: ChatParams): AsyncGenerator<ChatChunk>;
-  detectCapabilities(model: string): Promise<Capabilities>; abort(): void }`
+  detectCapabilities(model: string): Promise<Capabilities>; listModels(): Promise<ModelInfo[]>; abort(): void }`
 - `export function createClient(cfg: Pick<Config,'host'>): OllamaClient`
 - Holds ONE `new Ollama({host})`. `chat` maps ChatParams → `ollama.chat({..., stream:true, options:{num_ctx,...sampling}})`,
   yields deltas; final chunk sets `done, promptEvalCount, evalCount`. Wire `signal` → `abort()`.
   `detectCapabilities` → `ollama.show({model})`, map `capabilities[]` string list into the `Capabilities` booleans.
+  `listModels` → `ollama.list()` (GET /api/tags): map each `models[]` entry (`name`, `size`,
+  `details.parameter_size`, `details.quantization_level`, `modified_at`) into `ModelInfo`, sorted recent first.
+  Note: `modified_at` is typed `Date` by ollama-js but is a plain string at runtime — normalize with `String()`.
 
 ### `src/core/prompts.ts` (imports `./types`)
 - `export function systemPrompt(mode: AgentMode): string` — SHORT prompt per category (code/chat/vision/plan).

@@ -5,7 +5,7 @@
 // `CommandActions` bridge that App.tsx implements (so this file stays framework-agnostic and
 // easy to unit test independently of Ink/React).
 
-import type { AgentMode } from '../core/types';
+import type { AgentMode, ModelInfo } from '../core/types';
 
 export interface SessionSummary {
   id: string;
@@ -16,13 +16,15 @@ export interface SessionSummary {
 export interface CommandActions {
   setMode(mode: AgentMode): void;
   setModel(name: string): void;
+  listModels(): Promise<ModelInfo[]>; // installed models via GET /api/tags
+  openModelPicker(models: ModelInfo[]): void; // show the interactive picker overlay
   addImage(path: string): Promise<void>;
   clear(): void;
   listSessions(): Promise<SessionSummary[]>;
   showPermissions(): void;
   help(): void;
   notice(text: string): void;
-  // Required for `/mode` and `/model` with no argument to print the *current* value.
+  // Required for `/mode` with no argument (and `/model` error notices) to print the *current* value.
   getMode(): AgentMode;
   getModel(): string;
 }
@@ -34,7 +36,7 @@ export interface CommandSpec {
 
 export const COMMANDS: CommandSpec[] = [
   { name: '/mode', description: 'Show or set the agent mode (code | chat | vision | plan)' },
-  { name: '/model', description: 'Show or set the Ollama model name' },
+  { name: '/model', description: 'Pick from installed models (no arg) or set one directly (/model <name>)' },
   { name: '/image', description: 'Attach an image file to the next message' },
   { name: '/clear', description: 'Clear the displayed conversation log' },
   { name: '/sessions', description: 'List saved sessions' },
@@ -77,7 +79,19 @@ export async function runCommand(input: string, actions: CommandActions): Promis
 
     case '/model': {
       if (!arg) {
-        actions.notice(`Current model: ${actions.getModel()}`);
+        try {
+          const models = await actions.listModels();
+          if (models.length === 0) {
+            actions.notice('No models installed. Download one with `ollama pull <name>`.');
+          } else {
+            actions.openModelPicker(models);
+          }
+        } catch (err) {
+          actions.notice(
+            `Failed to list models: ${err instanceof Error ? err.message : String(err)}. ` +
+              `Is Ollama running? Current model: ${actions.getModel()}`,
+          );
+        }
       } else {
         actions.setModel(arg);
         actions.notice(`Model set to ${arg}`);
