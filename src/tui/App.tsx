@@ -20,27 +20,42 @@ import { imageToBase64 } from '../media/images';
 import type { Config, PermissionRequest, ToolCall } from '../core/types';
 import { COMMANDS, runCommand, type CommandActions } from './commands';
 import {
+  Banner,
   InputLine,
   LogLine,
   PermissionPrompt,
+  Pixels,
   StatusBar,
   ThinkingBlock,
   buildToolPreview,
+  type LogKind,
   type UsageStats,
 } from './components';
+import type { PixelArt } from './pixels';
+import { FLOWER_ART, PALETTE, ROLES, ROLE_WIDTH } from './theme';
+import { VERSION } from '../version';
 
 type LogItem = {
   id: number;
-  kind: 'user' | 'assistant' | 'tool' | 'notice' | 'error';
+  kind: LogKind;
   text: string;
   meta?: string;
   ok?: boolean;
 };
 
+/**
+ * The startup banner shares the log's `<Static>` — Ink supports only one `<Static>` per
+ * tree (it keeps a single `staticNode` slot), so a second one would silently suppress the
+ * other. Seeding it as `items[0]` also means it paints in the very first frame.
+ */
+type BannerEntry = { id: number; kind: 'banner' };
+type StaticEntry = LogItem | BannerEntry;
+
 type PermissionDecision = { decision: 'allow' | 'deny'; always?: boolean };
 
 export interface AppProps {
   config: Config;
+  logo?: PixelArt | null;
 }
 
 let logIdCounter = 0;
@@ -48,10 +63,10 @@ function nextLogId(): number {
   return ++logIdCounter;
 }
 
-export default function App({ config }: AppProps): React.JSX.Element {
+export default function App({ config, logo = null }: AppProps): React.JSX.Element {
   const { exit } = useApp();
 
-  const [log, setLog] = useState<LogItem[]>([]);
+  const [log, setLog] = useState<StaticEntry[]>(() => [{ id: nextLogId(), kind: 'banner' }]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [usage, setUsage] = useState<UsageStats>({ used: 0, max: config.numCtx, pct: 0 });
@@ -295,11 +310,21 @@ export default function App({ config }: AppProps): React.JSX.Element {
 
       <Box flexDirection="column" marginY={1} flexGrow={1}>
         <Static items={log}>
-          {(item) => (
-            <Box key={String(item.id)}>
-              <LogLine kind={item.kind} text={item.text} meta={item.meta} ok={item.ok} />
-            </Box>
-          )}
+          {(item) =>
+            item.kind === 'banner' ? (
+              <Box key="banner">
+                <Banner
+                  logo={logo}
+                  version={VERSION}
+                  columns={process.stdout.columns ?? 80}
+                />
+              </Box>
+            ) : (
+              <Box key={String(item.id)}>
+                <LogLine kind={item.kind} text={item.text} meta={item.meta} ok={item.ok} />
+              </Box>
+            )
+          }
         </Static>
 
         {liveThinking ? (
@@ -309,16 +334,20 @@ export default function App({ config }: AppProps): React.JSX.Element {
         ) : null}
 
         {liveContent ? (
-          <Box flexDirection="column" marginBottom={1}>
-            <Text bold color="green">
-              assistant
-            </Text>
-            <Text>{liveContent}</Text>
+          <Box marginBottom={1}>
+            <Box width={ROLE_WIDTH} marginRight={2} flexShrink={0}>
+              <Text bold color={ROLES.assistant.color}>
+                {ROLES.assistant.label}
+              </Text>
+            </Box>
+            <Box flexGrow={1}>
+              <Text color={PALETTE.text}>{liveContent}</Text>
+            </Box>
           </Box>
         ) : null}
 
         {pendingImages.length > 0 ? (
-          <Text dimColor italic>
+          <Text color={PALETTE.dim} italic>
             {pendingImages.length} image(s) queued for next message
           </Text>
         ) : null}
@@ -328,9 +357,13 @@ export default function App({ config }: AppProps): React.JSX.Element {
         ) : null}
       </Box>
 
+      <Box>
+        <Pixels art={FLOWER_ART} />
+      </Box>
+
       <InputLine value={input} disabled={busy || pendingPermission != null} />
 
-      <Text dimColor>
+      <Text color={PALETTE.dim}>
         Enter send · Ctrl+C / Cmd+L abort · Cmd+R clear input · Ctrl+D quit · /help
       </Text>
     </Box>
@@ -338,7 +371,10 @@ export default function App({ config }: AppProps): React.JSX.Element {
 }
 
 /** Bootstrap helper used by index.ts — loads config and returns the root element. */
-export function createApp(configOverrides?: Partial<Config>): React.JSX.Element {
+export function createApp(
+  configOverrides?: Partial<Config>,
+  logo?: PixelArt | null,
+): React.JSX.Element {
   const config = loadConfig(configOverrides);
-  return <App config={config} />;
+  return <App config={config} logo={logo} />;
 }

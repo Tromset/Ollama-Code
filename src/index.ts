@@ -4,6 +4,7 @@
 import { render } from 'ink';
 import type { AgentMode, Config } from './core/types';
 import { createApp } from './tui/App';
+import { loadLogo } from './media/logo';
 
 const VALID_MODES: readonly AgentMode[] = ['code', 'chat', 'vision', 'plan'];
 const VALID_PERMISSION_MODES: readonly Config['permissions']['mode'][] = ['plan', 'normal', 'yolo'];
@@ -88,15 +89,17 @@ function parseArgs(argv: string[]): Partial<Config> | 'help' | undefined {
   return overrides;
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
   if (parsed === 'help') {
     printHelp();
     return;
   }
 
-  const app = createApp(parsed);
-  render(app);
+  // Decode the logo before the first render: the banner is committed to Ink's `<Static>`,
+  // which never re-renders an item, so it has to be complete on the first frame.
+  const { art } = await loadLogo();
+  render(createApp(parsed, art));
 }
 
-main();
+void main();
