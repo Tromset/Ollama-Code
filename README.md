@@ -162,7 +162,7 @@ Details, guardrails, and diagrams: see [DOCUMENTATION.md](DOCUMENTATION.md), "Ag
 | `/permissions` | show the current permission configuration |
 | `/help` | list commands |
 
-Keyboard shortcuts: `Enter` send · `Ctrl+C` or `Cmd+L` abort the current turn (without quitting) · `Ctrl+D` quit · `Cmd+R` or `Esc` clear the input line · `y`/`n`/`a` answer a permission prompt (`a` = always allow this exact action). The full list lives in [HELP.md](HELP.md).
+Keyboard shortcuts: `Enter` send · `Ctrl+C` or `Cmd+J` abort the current turn (without quitting) · `Ctrl+D` quit · `Cmd+R` or `Esc` clear the input line · `Cmd+L` expand/collapse the live thinking block · `y`/`n`/`a` answer a permission prompt (`a` = always allow this exact action). `Cmd` combos need a terminal speaking the kitty keyboard protocol (kitty, Ghostty, WezTerm — auto-detected); elsewhere press `Option+J/R/L` with the terminal's "Option as Meta/Esc+" setting enabled. The full list lives in [HELP.md](HELP.md).
 
 ## The 7 tools
 

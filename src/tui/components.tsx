@@ -3,16 +3,7 @@
 import { Box, Text } from 'ink';
 import type { AgentMode, PermissionRequest } from '../core/types';
 import type { PixelArt } from './pixels';
-import {
-  PALETTE,
-  ROLES,
-  ROLE_WIDTH,
-  SUBTITLE,
-  WORDMARK,
-  WORDMARK_SPLIT,
-  WORDMARK_SPLIT_WIDTH,
-  WORDMARK_WIDTH,
-} from './theme';
+import { PALETTE, ROLES, ROLE_WIDTH } from './theme';
 
 export interface UsageStats {
   used: number;
@@ -42,61 +33,6 @@ export function Pixels({ art }: { art: PixelArt }): React.JSX.Element {
           ))}
         </Text>
       ))}
-    </Box>
-  );
-}
-
-/**
- * Startup banner: mascot plus wordmark. Rendered once into `<Static>`, so it scrolls away
- * as the conversation grows rather than occupying the viewport forever.
- *
- * The block wordmark is ~90 columns wide, so the layout steps down through progressively
- * more compact variants rather than letting Ink wrap it into garbage.
- */
-export function Banner(props: {
-  logo: PixelArt | null;
-  version: string;
-  columns: number;
-}): React.JSX.Element {
-  const { logo, version, columns } = props;
-  const subtitle = `${SUBTITLE}   ·   v${version}`;
-  const logoWidth = logo ? logo.width + 2 : 0;
-
-  const wordmark =
-    columns >= logoWidth + WORDMARK_WIDTH
-      ? WORDMARK
-      : columns >= logoWidth + WORDMARK_SPLIT_WIDTH
-        ? WORDMARK_SPLIT
-        : null;
-
-  const text = (
-    <Box flexDirection="column" marginLeft={logo ? 2 : 0}>
-      {wordmark ? (
-        wordmark.map((line, i) => (
-          <Text key={i} bold color={PALETTE.pink} wrap="truncate">
-            {line}
-          </Text>
-        ))
-      ) : (
-        <Text bold color={PALETTE.pink} wrap="truncate">
-          ollama-code
-        </Text>
-      )}
-      <Box marginTop={1}>
-        <Text color={PALETTE.dim} wrap="truncate">
-          {subtitle}
-        </Text>
-      </Box>
-    </Box>
-  );
-
-  // Side by side when both fit; otherwise stack the wordmark under the mascot.
-  const sideBySide = !logo || columns >= logoWidth + WORDMARK_SPLIT_WIDTH;
-
-  return (
-    <Box flexDirection={sideBySide ? 'row' : 'column'} marginBottom={1}>
-      {logo ? <Pixels art={logo} /> : null}
-      {text}
     </Box>
   );
 }

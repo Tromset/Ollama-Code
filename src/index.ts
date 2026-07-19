@@ -4,7 +4,9 @@
 import { render } from 'ink';
 import type { AgentMode, Config } from './core/types';
 import { createApp } from './tui/App';
+import { renderBannerAnsi } from './tui/banner';
 import { loadLogo } from './media/logo';
+import { VERSION } from './version';
 
 const VALID_MODES: readonly AgentMode[] = ['code', 'chat', 'vision', 'plan'];
 const VALID_PERMISSION_MODES: readonly Config['permissions']['mode'][] = ['plan', 'normal', 'yolo'];
@@ -96,10 +98,16 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Decode the logo before the first render: the banner is committed to Ink's `<Static>`,
-  // which never re-renders an item, so it has to be complete on the first frame.
+  // The banner is printed straight to stdout before Ink starts, so Ink can never
+  // reposition, race, or re-print it (it used to live in `<Static>`, where Ink's write
+  // timing could smear the first pixel row over the shell prompt).
   const { art } = await loadLogo();
-  render(createApp(parsed, art));
+  // `|| 80`, not `?? 80`: a detached/odd pty can report 0 columns.
+  process.stdout.write(renderBannerAnsi(art, VERSION, process.stdout.columns || 80));
+
+  // kittyKeyboard: on terminals speaking the kitty keyboard protocol (kitty, Ghostty,
+  // WezTerm — auto-detected), real Cmd+letter combos reach the app as `key.super`.
+  render(createApp(parsed), { kittyKeyboard: { mode: 'auto' } });
 }
 
 void main();

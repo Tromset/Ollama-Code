@@ -32,13 +32,16 @@ Everything you can type or press in `ollama-code`, in one place. For installatio
 |---|---|
 | `Enter` | send the current input line |
 | `Ctrl+C` | abort the current turn (does **not** quit) |
-| `Cmd+L` | abort the current turn (same as `Ctrl+C`) |
-| `Cmd+R` | clear the input line |
+| `Cmd+J` / `Option+J` | abort the current turn (same as `Ctrl+C`) |
+| `Cmd+R` / `Option+R` | clear the input line |
 | `Esc` | clear the input line (same as `Cmd+R`) |
+| `Cmd+L` / `Option+L` | expand/collapse the live thinking block |
 | `Ctrl+D` | quit the TUI |
 | `Backspace` / `Delete` | delete the last character of the input line |
 
-Note: there is no thinking-toggle shortcut. The live thinking block always renders collapsed (`[thinking · N lines]`); the full thinking text is printed into the log at the end of each turn.
+About the `Cmd` combos: macOS terminals normally never forward the `Cmd` key to terminal apps. `Cmd+J/R/L` work in terminals speaking the [kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/) — kitty, Ghostty, WezTerm — which `ollama-code` auto-detects and enables. Everywhere else (Terminal.app, iTerm2, VS Code), use `Option+J/R/L` instead, with the terminal's "Use Option as Meta key" / "Option as Esc+" setting enabled. `Ctrl+C` and `Esc` always work regardless.
+
+The live thinking block renders collapsed (`[thinking · N lines]`) until toggled with `Cmd+L` / `Option+L`; the full thinking text is printed into the log at the end of each turn either way.
 
 ## Permission prompt keys
 

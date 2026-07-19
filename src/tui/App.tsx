@@ -20,7 +20,6 @@ import { imageToBase64 } from '../media/images';
 import type { Config, PermissionRequest, ToolCall } from '../core/types';
 import { COMMANDS, runCommand, type CommandActions } from './commands';
 import {
-  Banner,
   InputLine,
   LogLine,
   PermissionPrompt,
@@ -31,9 +30,8 @@ import {
   type LogKind,
   type UsageStats,
 } from './components';
-import type { PixelArt } from './pixels';
+import { tailLines } from './text';
 import { FLOWER_ART, PALETTE, ROLES, ROLE_WIDTH } from './theme';
-import { VERSION } from '../version';
 
 type LogItem = {
   id: number;
@@ -43,19 +41,10 @@ type LogItem = {
   ok?: boolean;
 };
 
-/**
- * The startup banner shares the log's `<Static>` — Ink supports only one `<Static>` per
- * tree (it keeps a single `staticNode` slot), so a second one would silently suppress the
- * other. Seeding it as `items[0]` also means it paints in the very first frame.
- */
-type BannerEntry = { id: number; kind: 'banner' };
-type StaticEntry = LogItem | BannerEntry;
-
 type PermissionDecision = { decision: 'allow' | 'deny'; always?: boolean };
 
 export interface AppProps {
   config: Config;
-  logo?: PixelArt | null;
 }
 
 let logIdCounter = 0;
@@ -63,16 +52,16 @@ function nextLogId(): number {
   return ++logIdCounter;
 }
 
-export default function App({ config, logo = null }: AppProps): React.JSX.Element {
+export default function App({ config }: AppProps): React.JSX.Element {
   const { exit } = useApp();
 
-  const [log, setLog] = useState<StaticEntry[]>(() => [{ id: nextLogId(), kind: 'banner' }]);
+  const [log, setLog] = useState<LogItem[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [usage, setUsage] = useState<UsageStats>({ used: 0, max: config.numCtx, pct: 0 });
-  // The live thinking block is always collapsed (the toggle shortcut was removed);
-  // the full thinking text is flushed into the log at the end of each turn.
-  const [thinkingCollapsed] = useState(true);
+  // Live thinking renders collapsed by default; Cmd+L (or Option+L) toggles it open.
+  // The full thinking text is flushed into the log at the end of each turn regardless.
+  const [thinkingCollapsed, setThinkingCollapsed] = useState(true);
   const [liveThinking, setLiveThinking] = useState('');
   const [liveContent, setLiveContent] = useState('');
   const [pendingImages, setPendingImages] = useState<string[]>([]);
@@ -263,16 +252,21 @@ export default function App({ config, logo = null }: AppProps): React.JSX.Elemen
       return;
     }
 
-    // Abort the current turn: Ctrl+C or Cmd+J.
-    if ((key.ctrl && inputChar === 'c') || (key.meta && inputChar === 'j')) {
+    // Abort the current turn: Ctrl+C, or Cmd+J (`key.super`, terminals speaking the kitty
+    // keyboard protocol) / Option+J (`key.meta`, everywhere else).
+    if ((key.ctrl && inputChar === 'c') || ((key.super || key.meta) && inputChar === 'j')) {
       agentRef.current?.abort();
       setBusy(false);
       notice('Aborted.');
       return;
     }
 
-    // Cmd+L is reserved for thinking toggle (no-op — thinking is always collapsed).
-    if (key.meta && inputChar === 'l') return;
+    // Toggle the live thinking block: Cmd+L / Option+L. Stays above the `busy` guard so it
+    // works mid-stream, which is when there is thinking to look at.
+    if ((key.super || key.meta) && inputChar === 'l') {
+      setThinkingCollapsed((v) => !v);
+      return;
+    }
 
     if (key.ctrl && inputChar === 'd') {
       exit();
@@ -281,8 +275,8 @@ export default function App({ config, logo = null }: AppProps): React.JSX.Elemen
 
     if (busy) return;
 
-    // Clear the input line: Cmd+R (Escape also works, below).
-    if (key.meta && inputChar === 'r') {
+    // Clear the input line: Cmd+R / Option+R (Escape also works, below).
+    if ((key.super || key.meta) && inputChar === 'r') {
       setInput('');
       return;
     }
@@ -302,10 +296,28 @@ export default function App({ config, logo = null }: AppProps): React.JSX.Elemen
       return;
     }
 
-    if (inputChar && !key.ctrl && !key.meta && inputChar >= ' ') {
+    if (inputChar && !key.ctrl && !key.meta && !key.super && inputChar >= ' ') {
       setInput((v) => v + inputChar);
     }
   });
+
+  // Cap the live streaming region well below the terminal height. If Ink's dynamic frame
+  // ever outgrows the window, Ink falls back to clearing the entire terminal (including
+  // scrollback) and re-printing everything on every stream chunk — the cause of the
+  // banner flicker/tearing. The full text still reaches the log via `flushLiveStream`.
+  // `||`, not `??`: a detached/odd pty can report 0 rows/columns.
+  const termRows = process.stdout.rows || 24;
+  const termCols = process.stdout.columns || 80;
+  const liveBudget = Math.max(4, termRows - 14);
+  const thinkingBudget = Math.min(8, liveBudget);
+  const liveThinkingShown = thinkingCollapsed
+    ? liveThinking
+    : tailLines(liveThinking, thinkingBudget, Math.max(1, termCols - 4)).text;
+  const contentBudget = Math.max(
+    4,
+    liveBudget - (liveThinking ? (thinkingCollapsed ? 2 : thinkingBudget + 3) : 0),
+  );
+  const liveContentTail = tailLines(liveContent, contentBudget, Math.max(1, termCols - 9));
 
   return (
     <Box flexDirection="column" padding={1}>
@@ -313,26 +325,16 @@ export default function App({ config, logo = null }: AppProps): React.JSX.Elemen
 
       <Box flexDirection="column" marginY={1} flexGrow={1}>
         <Static items={log}>
-          {(item) =>
-            item.kind === 'banner' ? (
-              <Box key="banner">
-                <Banner
-                  logo={logo}
-                  version={VERSION}
-                  columns={process.stdout.columns ?? 80}
-                />
-              </Box>
-            ) : (
-              <Box key={String(item.id)}>
-                <LogLine kind={item.kind} text={item.text} meta={item.meta} ok={item.ok} />
-              </Box>
-            )
-          }
+          {(item) => (
+            <Box key={String(item.id)}>
+              <LogLine kind={item.kind} text={item.text} meta={item.meta} ok={item.ok} />
+            </Box>
+          )}
         </Static>
 
         {liveThinking ? (
           <Box marginBottom={1}>
-            <ThinkingBlock text={liveThinking} collapsed={thinkingCollapsed} />
+            <ThinkingBlock text={liveThinkingShown} collapsed={thinkingCollapsed} />
           </Box>
         ) : null}
 
@@ -343,8 +345,13 @@ export default function App({ config, logo = null }: AppProps): React.JSX.Elemen
                 {ROLES.assistant.label}
               </Text>
             </Box>
-            <Box flexGrow={1}>
-              <Text color={PALETTE.text}>{liveContent}</Text>
+            <Box flexGrow={1} flexDirection="column">
+              {liveContentTail.hidden > 0 ? (
+                <Text color={PALETTE.faint} italic>
+                  … (+{liveContentTail.hidden} earlier lines)
+                </Text>
+              ) : null}
+              <Text color={PALETTE.text}>{liveContentTail.text}</Text>
             </Box>
           </Box>
         ) : null}
@@ -367,17 +374,15 @@ export default function App({ config, logo = null }: AppProps): React.JSX.Elemen
       <InputLine value={input} disabled={busy || pendingPermission != null} />
 
       <Text color={PALETTE.dim}>
-        Enter send · Ctrl+C / Cmd+J abort · Cmd+R clear input · Ctrl+D quit · /help
+        Enter send · Ctrl+C / Cmd+J abort · Cmd+R clear input · Cmd+L thinking · Ctrl+D quit ·
+        /help
       </Text>
     </Box>
   );
 }
 
 /** Bootstrap helper used by index.ts — loads config and returns the root element. */
-export function createApp(
-  configOverrides?: Partial<Config>,
-  logo?: PixelArt | null,
-): React.JSX.Element {
+export function createApp(configOverrides?: Partial<Config>): React.JSX.Element {
   const config = loadConfig(configOverrides);
-  return <App config={config} logo={logo} />;
+  return <App config={config} />;
 }
