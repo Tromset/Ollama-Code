@@ -27,10 +27,13 @@ export function assetPath(name: string): string {
 }
 
 /**
- * Load the logo, downscaled to a `size`×`size` pixel grid and converted to half-blocks.
+ * Load the logo, converted to half-blocks.
  *
  * Never rejects: a missing or corrupt asset degrades to `{ art: null }` rather than
  * blocking CLI startup.
+ *
+ * SVG is tried first — it is the pixel-art source of truth and requires no native deps.
+ * PNG via sharp is a fallback for environments where the SVG asset is unavailable.
  */
 export async function loadLogo(size = 16): Promise<LoadedLogo> {
   // Without colour the art is an unreadable blob of ▀ and ▄, so don't draw it at all.
@@ -38,11 +41,11 @@ export async function loadLogo(size = 16): Promise<LoadedLogo> {
     return { art: null, source: 'none' };
   }
 
-  const fromPng = await loadPng(size);
-  if (fromPng) return { art: fromPng, source: 'png' };
-
   const fromSvg = await loadSvg();
   if (fromSvg) return { art: fromSvg, source: 'svg' };
+
+  const fromPng = await loadPng(size);
+  if (fromPng) return { art: fromPng, source: 'png' };
 
   return { art: null, source: 'none' };
 }

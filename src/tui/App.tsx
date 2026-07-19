@@ -263,13 +263,16 @@ export default function App({ config, logo = null }: AppProps): React.JSX.Elemen
       return;
     }
 
-    // Abort the current turn: Ctrl+C or Cmd+L.
-    if ((key.ctrl && inputChar === 'c') || (key.meta && inputChar === 'l')) {
+    // Abort the current turn: Ctrl+C or Cmd+J.
+    if ((key.ctrl && inputChar === 'c') || (key.meta && inputChar === 'j')) {
       agentRef.current?.abort();
       setBusy(false);
       notice('Aborted.');
       return;
     }
+
+    // Cmd+L is reserved for thinking toggle (no-op — thinking is always collapsed).
+    if (key.meta && inputChar === 'l') return;
 
     if (key.ctrl && inputChar === 'd') {
       exit();
@@ -364,7 +367,7 @@ export default function App({ config, logo = null }: AppProps): React.JSX.Elemen
       <InputLine value={input} disabled={busy || pendingPermission != null} />
 
       <Text color={PALETTE.dim}>
-        Enter send · Ctrl+C / Cmd+L abort · Cmd+R clear input · Ctrl+D quit · /help
+        Enter send · Ctrl+C / Cmd+J abort · Cmd+R clear input · Ctrl+D quit · /help
       </Text>
     </Box>
   );
