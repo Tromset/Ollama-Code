@@ -1,6 +1,6 @@
 // src/core/client.ts — thin wrapper over ollama-js 0.6.3.
 //
-// Uses the native POST /api/chat endpoint only (never the OpenAI /v1 shim — see PLAN.md §1).
+// Uses the native POST /api/chat endpoint only (never the OpenAI /v1 shim — see DOCUMENTATION.md §2.1).
 // Holds exactly ONE `Ollama` instance per client, because `ollama.abort()` cuts every
 // in-flight stream on that instance (one client per cancellable task).
 

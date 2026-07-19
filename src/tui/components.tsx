@@ -20,7 +20,7 @@ export function StatusBar(props: {
   return (
     <Box borderStyle="single" borderColor="gray" paddingX={1} justifyContent="space-between">
       <Text>
-        <Text bold>qwen-harness</Text>
+        <Text bold>ollama-code</Text>
         <Text dimColor> · </Text>
         <Text color="cyan">{mode}</Text>
         <Text dimColor> · </Text>
@@ -70,7 +70,7 @@ export function ThinkingBlock(props: { text: string; collapsed: boolean }): Reac
     const lines = text.split('\n').length;
     return (
       <Text dimColor italic>
-        [thinking · {lines} line{lines === 1 ? '' : 's'} · Cmd+t to expand]
+        [thinking · {lines} line{lines === 1 ? '' : 's'}]
       </Text>
     );
   }

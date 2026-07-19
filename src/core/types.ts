@@ -1,11 +1,11 @@
-// src/core/types.ts — shared domain types (the seam between all build waves).
+// src/core/types.ts — shared domain types (the seam between all modules).
 //
 // This file holds ONLY type/interface declarations (no runtime code) so every factory
 // module can import from it without creating a cycle. Factory functions (createClient,
 // createRegistry, createPermissions, createContext, createSessionStore, createAgent) live
 // in their own files and import their types from here.
 //
-// Shapes mirror Ollama's native POST /api/chat. See docs/CONTRACTS.md and PLAN.md.
+// Shapes mirror Ollama's native POST /api/chat. See docs/CONTRACTS.md.
 
 // ---- Chat / message model (mirrors Ollama /api/chat native shape) ----
 export type Role = 'system' | 'user' | 'assistant' | 'tool';

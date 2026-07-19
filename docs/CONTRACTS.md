@@ -1,8 +1,8 @@
-# CONTRACTS.md — cross-module seams (source of truth for all build agents)
+# CONTRACTS.md — cross-module seams (build specification)
 
-> Read this **and** `PLAN.md` before writing any code. These TypeScript interfaces are the
-> seams between build waves. Do not change a signature here without a very good reason; if you
-> must, note it clearly in your final report so downstream waves adapt.
+> These TypeScript interfaces are the seams between modules, written *before* the implementation
+> so the modules could be developed independently. Do not change a signature here without a very
+> good reason; [DOCUMENTATION.md](../DOCUMENTATION.md) records where the implemented code deviates.
 >
 > Stack: TypeScript ESM, run via `tsx` (no build step). `tsconfig` uses
 > `"moduleResolution": "Bundler"` so imports are **extensionless** (`from './client'`, not `./client.js`).
@@ -10,7 +10,7 @@
 
 ---
 
-## 1. Shared types — `src/core/types.ts` (Wave 1 owns this file)
+## 1. Shared types — `src/core/types.ts`
 
 ```ts
 // ---- Chat / message model (mirrors Ollama /api/chat native shape) ----
@@ -82,7 +82,7 @@ export interface Config {
 }
 ```
 
-## 2. Client — `src/core/client.ts` (Wave 1)
+## 2. Client — `src/core/client.ts`
 
 Wrapper over the `ollama` npm lib. **One client instance per cancellable task** (abort() cuts all streams
 of an instance). Always send `options.num_ctx`.
@@ -120,11 +120,11 @@ export function createClient(cfg: Pick<Config, 'host'>): OllamaClient;
 The agent loop is responsible for **accumulating** `thinking` + `content` + `tool_calls` across chunks
 into one assistant `Message` and pushing it to history, then pushing `role:'tool'` results.
 
-## 3. Registry — `src/tools/registry.ts` (Wave 2A)
+## 3. Registry — `src/tools/registry.ts`
 
 ```ts
 export interface ToolRegistry {
-  list(mode: AgentMode): ToolDef[];              // filters tools by mode (see §6 of PLAN)
+  list(mode: AgentMode): ToolDef[];              // filters tools by mode (code=all, chat=none, vision/plan=read-only)
   toolSchemas(mode: AgentMode): Record<string, unknown>[]; // JSON Schema array for ChatParams.tools
   dispatch(call: ToolCall, ctx: ToolContext): Promise<ToolResult>; // validates via zod, runs handler,
                                                                     // returns actionable error as {ok:false}
@@ -134,7 +134,7 @@ export function createRegistry(): ToolRegistry;
 Validation failures and tool errors are returned as `ToolResult{ ok:false, content: <actionable message> }`
 so the model can retry — they are NOT thrown.
 
-## 4. Permissions — `src/core/permissions.ts` (Wave 2B)
+## 4. Permissions — `src/core/permissions.ts`
 
 ```ts
 export type Decision = 'allow' | 'ask' | 'deny';
@@ -153,10 +153,10 @@ export interface PermissionChecker {
 export function createPermissions(cfg: PermissionConfig): PermissionChecker;
 ```
 Hard rules: **`.env` reads/writes denied**; destructive bash (`rm -rf`, etc.) denied; **plan mode denies all
-writes/bash** (read-only). `ask` decisions are resolved interactively by the TUI (Wave 4), which may upgrade
+writes/bash** (read-only). `ask` decisions are resolved interactively by the TUI, which may upgrade
 a rule to `allow` ("always"). The agent loop calls `check()`; on `ask` it invokes a callback the TUI provides.
 
-## 5. Context budget — `src/core/context.ts` (Wave 2B)
+## 5. Context budget — `src/core/context.ts`
 
 ```ts
 export interface ContextManager {
@@ -167,7 +167,7 @@ export interface ContextManager {
 export function createContext(cfg: Config, client: OllamaClient): ContextManager;
 ```
 
-## 6. Session + FT log — `src/core/session.ts` (Wave 2B)
+## 6. Session + FT log — `src/core/session.ts`
 
 Persist sessions AND append a JSONL fine-tuning log from day one: system prompt, tool schemas,
 messages with `tool_calls` as objects, and a success/failure flag per session.
@@ -184,7 +184,7 @@ export interface SessionStore {
 export function createSessionStore(dir: string): SessionStore;
 ```
 
-## 7. Agent loop — `src/core/agent.ts` (Wave 3)
+## 7. Agent loop — `src/core/agent.ts`
 
 ```ts
 export interface AgentEvents {
@@ -207,14 +207,14 @@ export function createAgent(deps: {
 }): Agent;
 ```
 
-## 8. Media — `src/media/images.ts` (Wave 2B)
+## 8. Media — `src/media/images.ts`
 
 ```ts
 // Read image file -> base64 (no data: prefix), resized to a sane max dimension for the model.
 export function imageToBase64(path: string, maxDim?: number): Promise<string>;
 ```
 
-## 9. TUI — `src/tui/*` (Wave 4) + entry `src/index.ts`
+## 9. TUI — `src/tui/*` + entry `src/index.ts`
 
 Ink app (React 19.2, alternate screen). Renders streamed thinking (collapsible), content, tool calls,
 a **diff preview before writes**, and an approval prompt (`y` / `n` / `a`=always). Status bar shows mode,

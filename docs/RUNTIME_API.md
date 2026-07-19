@@ -1,21 +1,21 @@
 # RUNTIME_API.md — verified library surface + per-file export contracts
 
-> Written by the Opus manager after installing deps and inspecting the live Ollama server and the
-> installed type definitions on 2026-07-16. **These are facts, not guesses — build against them.**
-> Read this together with `PLAN.md` and `docs/CONTRACTS.md`. Shared types live in `src/core/types.ts`
-> (already written — import from `./types`, extensionless). Stack: TypeScript ESM via `tsx`, no build step.
+> Written *before* the implementation, after installing the dependencies and inspecting a live Ollama
+> server and the installed type definitions. **These are facts, not guesses — build against them.**
+> Read this together with `docs/CONTRACTS.md`. Shared types live in `src/core/types.ts`
+> (import from `./types`, extensionless). Stack: TypeScript ESM via `tsx`, no build step.
 
 ---
 
-## 0. Verified environment (live)
+## 0. Reference environment
 
-- Node **v26.0.0**, npm 11.12.1. Ollama server **0.32.0** at `http://localhost:11434` (reachable).
+- Node.js ≥ 22 with npm. A recent Ollama server at `http://localhost:11434` (reachable).
 - Model `qwen3.5:latest`: `capabilities: ["completion","vision","tools","thinking"]`,
   `qwen35.context_length = 262144`. Modelfile params: `presence_penalty 1.5, temperature 1, top_k 20, top_p 0.95`.
-- Installed: `ollama@0.6.3`, `zod@4.4.3`, `ink@6.8.0`, `react@19.2.7`, `typescript@5.9.3`,
-  `tsx@4.23.1`, `vitest@2.1.9`, `@types/node@22`, `@types/react@19.2`, `sharp@0.33.5` (optional).
+- Dependencies: `ollama@0.6.x`, `zod@4.x`, `ink@6.x`, `react@19.2.x`, `typescript@5.x`,
+  `tsx@4.x`, `vitest@2.x`, `@types/node@22`, `@types/react@19.2`, `sharp@0.33.x` (optional).
 
-## 1. ollama-js 0.6.3 — VERIFIED usage
+## 1. ollama-js 0.6.x — VERIFIED usage
 
 ```ts
 import { Ollama } from 'ollama';            // named export (class). There is also a default singleton.
@@ -55,12 +55,12 @@ interface ShowResponse { capabilities: string[]; model_info: Map<string,any>; pa
 The final chunk has `done: true` and carries `prompt_eval_count` (context/prompt tokens) + `eval_count` (generated).
 Our core `Message[]` (role union, images: string[], tool_calls, tool_name) passes directly as `messages`.
 
-## 2. zod 4.4.3
+## 2. zod 4.x
 
 `import { z } from 'zod';` — build schemas with `z.object({...})`, convert with **`z.toJSONSchema(schema)`**
 (top-level function, verified present). Use the result as `ToolDef.parameters` (the JSON Schema sent to Ollama).
 
-## 3. ink 6.8.0 + React 19.2 (TUI wave)
+## 3. ink 6.x + React 19.2
 
 `import { Box, Text, Static, render, useApp, useInput, useStdin, useStdout, useFocus } from 'ink';`
 TSX compiles via `tsconfig` `"jsx": "react-jsx"` (no `import React` needed). `render(<App/>)` with alternate
@@ -68,7 +68,7 @@ screen. Use `useInput` for keypresses (approval prompts, slash commands).
 
 ---
 
-## 4. Per-file export contracts (so the parallel Wave-B files link up)
+## 4. Per-file export contracts (so independently written files link up)
 
 Every file below imports shared types from `./types` (or `../core/types`). Extensionless imports.
 **Do not change these export names** — sibling files import them by these exact names.
@@ -79,7 +79,7 @@ Every file below imports shared types from `./types` (or `../core/types`). Exten
   think `true`, permissions `{ mode:'normal', rules:[] }`.
 - `export function defaultThinkFor(mode: AgentMode): Config['think']` — `true` for code, else `false`.
 - `export function loadConfig(overrides?: Partial<Config>): Config` — merge order
-  DEFAULT_CONFIG ← `~/.qwen-harness/config.json` ← `./.qwen-harness.json` ← overrides. Never throws on missing files.
+  DEFAULT_CONFIG ← `~/.ollama-code/config.json` ← `./.ollama-code.json` ← overrides. Never throws on missing files.
 
 ### `src/core/client.ts` (imports `./types`)
 - `export interface ChatParams { model: string; messages: Message[]; tools?: Record<string,unknown>[];
@@ -141,13 +141,13 @@ Every file below imports shared types from `./types` (or `../core/types`). Exten
 
 ### `src/tools/registry.ts` (imports `../core/types`, `./fs`, `./search`, `./bash`)
 - `export function createRegistry(): ToolRegistry` (interface `ToolRegistry` is in `types.ts`).
-- Mode filter (PLAN §6): **code** = all 7 tools; **chat** = none; **vision** = read-only set
+- Mode filter: **code** = all 7 tools; **chat** = none; **vision** = read-only set
   {`read_file`,`list_files`,`search`}; **plan** = read-only set {`read_file`,`list_files`,`search`}.
 - `toolSchemas(mode)` returns OpenAI-format array: `{ type:'function', function:{ name, description, parameters } }`.
 - `dispatch(call, ctx)`: find tool by `call.function.name`; zod-validate `call.function.arguments`; on failure
   return `{ok:false, content:<actionable msg>}` (do NOT throw); else run handler, catching thrown errors into `{ok:false}`.
 
-### `src/core/agent.ts` (Wave C — imports client, registry, permissions, context, session, prompts, types)
+### `src/core/agent.ts` (imports client, registry, permissions, context, session, prompts, types)
 - `export function createAgent(deps): Agent` per CONTRACTS §7. Owns the interactive permission flow:
   before dispatching a tool, call `permissions.check`; on `'ask'` call `events.onAskPermission` (which may return
   `always` → `permissions.addRule`). Accumulate thinking/content/tool_calls per turn; push assistant + `role:'tool'`

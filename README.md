@@ -1,141 +1,219 @@
-# qwen-harness
+<p align="center">
+  <img src="assets/logo.svg" alt="ollama-code logo — pixel llama" width="160" height="160">
+</p>
 
-> Harnais de codage agentique 100 % local pour **Qwen 3.5 9B** via **Ollama** — sans API cloud, sans facturation au token, code source intégralement possédé.
+# ollama-code
 
-Ce README couvre l'installation et l'usage courant. Pour la genèse du projet, les choix d'architecture et l'ingénierie de fiabilité pour petit modèle, voir le document de référence complet : [DOCUMENTATION.md](DOCUMENTATION.md).
+> 100 % local agentic coding harness for **Qwen 3.5 9B** via **Ollama** — no cloud API, no per-token billing, fully owned source code.
 
-## Prérequis
+This README covers installation and everyday usage. For the project's motivation, architecture choices, and small-model reliability engineering, see the full reference document: [DOCUMENTATION.md](DOCUMENTATION.md). For a complete list of commands and keyboard shortcuts, see [HELP.md](HELP.md).
 
-- Node.js ≥ 22 (développé et testé sur Node 26)
-- [Ollama](https://ollama.com) en cours d'exécution (`ollama serve`), accessible par défaut sur `http://localhost:11434`
-- Le modèle cible récupéré : `ollama pull qwen3.5`
+## Prerequisites
 
-## Installation
+- Node.js ≥ 22
+- [Ollama](https://ollama.com) installed and running (see below)
+- The target model pulled: `ollama pull qwen3.5`
+
+## Step 1 — Install Ollama
+
+Ollama is the local model server that runs Qwen 3.5 on your machine.
+
+**macOS**
 
 ```bash
-git clone <repo> qwen-harness
-cd qwen-harness
+# Option A: download the app from https://ollama.com/download and drag it to Applications
+# Option B: Homebrew
+brew install ollama
+```
+
+**Linux**
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+**Windows**
+
+Download and run the installer from [ollama.com/download](https://ollama.com/download).
+
+## Step 2 — Connect Ollama to your terminal
+
+1. **Start the server** (the macOS/Windows desktop app starts it automatically; otherwise run it yourself):
+
+   ```bash
+   ollama serve
+   ```
+
+2. **Verify it is reachable** — the harness talks to Ollama over HTTP on `http://localhost:11434` by default:
+
+   ```bash
+   curl -s http://localhost:11434/api/version
+   # → {"version":"..."}  means the server is up
+   ```
+
+3. **Pull the model**:
+
+   ```bash
+   ollama pull qwen3.5
+   ```
+
+4. **Check it is available**:
+
+   ```bash
+   ollama list          # models on disk
+   ollama ps            # models currently loaded in memory
+   ```
+
+If Ollama runs on another machine or port, point the harness at it with `--host <url>` (or the `host` key in the config file). A quick reference of useful Ollama commands lives in [HELP.md](HELP.md).
+
+## Step 3 — Install ollama-code on your PC
+
+Clone the repo and install its dependencies (there is no build step — the project runs directly from the TypeScript sources via `tsx`):
+
+```bash
+git clone https://github.com/Tromset/Ollama-Code.git ollama-code
+cd ollama-code
 npm install
 ```
 
-Pas d'étape de build : le projet tourne directement depuis les sources TypeScript via `tsx`.
+Then make `ollama-code` available as a global terminal command:
 
-## Démarrage rapide
+```bash
+npm link
+```
 
-Depuis le dépôt :
+`npm link` creates a symlink to `ollama-code` in your active Node's global `bin` directory (already on your `PATH`, no `sudo` needed). From now on, typing `ollama-code` in **any** directory launches the tool against that directory:
+
+```bash
+ollama-code
+```
+
+Verify it resolved:
+
+```bash
+which ollama-code       # prints the path to the linked command
+ollama-code --help      # prints usage
+```
+
+> **Alternatives.** `npm install -g .` installs a copy instead of a live symlink (rerun it after pulling updates). Or skip the global command entirely and run `npm start` from inside the repository.
+
+Under the hood, `bin/ollama-code.js` resolves `tsx` from the package's own `node_modules` and points explicitly at its own `tsconfig.json` (rather than letting `tsx` resolve one from the current directory) — so the command works correctly even when invoked from outside the repository.
+
+## Quick start
+
+Once linked, from anywhere:
+
+```bash
+ollama-code
+```
+
+Or, without linking, from inside the repository:
 
 ```bash
 npm start
 ```
 
-Ou en tant que commande globale, une fois liée :
-
-```bash
-npm link
-qwen-harness
-```
-
-`bin/qwen-harness.js` résout `tsx` depuis les `node_modules` du paquet et pointe explicitement vers son propre `tsconfig.json` (plutôt que de laisser `tsx` résoudre celui du répertoire courant) — la commande fonctionne donc correctement même invoquée depuis un autre répertoire que le dépôt.
-
-## Utilisation (CLI)
+## Usage (CLI)
 
 ```
-qwen-harness                       Lance la TUI (interactif)
-qwen-harness [options]
+ollama-code                       Launch the TUI (interactive)
+ollama-code [options]
 
 Options:
-  --model <name>       Modèle Ollama (défaut : qwen3.5:latest)
-  --mode <mode>        Mode d'agent : code | chat | vision | plan (défaut : code)
-  --num-ctx <n>        Taille de la fenêtre de contexte (défaut : 32768)
-  --host <url>         Hôte Ollama (défaut : http://localhost:11434)
-  --yolo               Mode de permission yolo (tout autoriser sauf interdits durs)
-  --plan-perms         Mode de permission plan (lecture seule)
-  --help, -h           Affiche l'aide
+  --model <name>        Ollama model (default: qwen3.5:latest)
+  --mode <mode>         Agent mode: code | chat | vision | plan (default: code)
+  --num-ctx <n>         Context window size (default: 32768)
+  --host <url>          Ollama host (default: http://localhost:11434)
+  --permission <mode>   Permission mode: plan | normal | yolo (default: normal)
+  --yolo                Shorthand for --permission yolo (allow all except hard denies)
+  --plan-perms          Shorthand for --permission plan (read-only)
+  --help, -h            Show help
 
-Exemples:
-  qwen-harness
-  qwen-harness --mode plan --model qwen3.5:latest
-  npm run smoke                        Test de streaming rapide, sans TUI
+Examples:
+  ollama-code
+  ollama-code --mode plan --model qwen3.5:latest
+  npm run smoke                        Quick streaming smoke test, no TUI
 ```
 
-⚠️ `--mode plan` (le mode d'agent) et `--plan-perms` (le moteur de permissions) sont deux réglages **indépendants** : `--mode plan` change le prompt système et limite les outils exposés, `--plan-perms` force le moteur de permissions en lecture seule quel que soit le mode d'agent. Rien ne les synchronise automatiquement — combinez les deux pour la garantie maximale en investigation.
+⚠️ `--mode plan` (the agent mode) and `--plan-perms` (the permission engine) are two **independent** settings: `--mode plan` changes the system prompt and restricts the exposed tools, while `--plan-perms` forces the permission engine into read-only regardless of the agent mode. Nothing synchronizes them automatically — combine both for the strongest guarantee during investigation.
 
-## Modes d'agent
+## Agent modes
 
-| Mode | Outils exposés | Usage |
+| Mode | Exposed tools | Purpose |
 |---|---|---|
-| `code` | les 7 | codage agentique complet |
-| `vision` | 3 lecture (`read_file`, `list_files`, `search`) | décrire/analyser des images + contexte projet |
-| `plan` | 3 lecture | investiguer et proposer un plan, sans jamais écrire |
-| `chat` | aucun | conversation simple |
+| `code` | all 7 | full agentic coding |
+| `vision` | 3 read-only (`read_file`, `list_files`, `search`) | describe/analyze images + project context |
+| `plan` | 3 read-only | investigate and propose a plan, never write |
+| `chat` | none | plain conversation |
 
-`think` (raisonnement visible) n'est **pas** dérivé automatiquement du mode choisi au lancement : il vaut `true` par défaut pour les quatre modes tant qu'aucune valeur explicite n'est fournie (CLI/config). Seul un changement de mode **en cours de session** via `/mode` le force à `false` pour `chat`/`vision`/`plan` (`true` uniquement pour `code`).
+`think` (visible reasoning) is **not** automatically derived from the mode chosen at launch: it defaults to `true` for all four modes as long as no explicit value is provided (CLI/config). Only a mode change **during a session** via `/mode` forces it to `false` for `chat`/`vision`/`plan` (`true` only for `code`).
 
-Détails, garde-fous et diagrammes : voir [DOCUMENTATION.md](DOCUMENTATION.md), section « Modes d'agent ».
+Details, guardrails, and diagrams: see [DOCUMENTATION.md](DOCUMENTATION.md), "Agent modes" section.
 
-## Commandes de la TUI
+## TUI commands
 
-| Commande | Rôle |
+| Command | Purpose |
 |---|---|
-| `/mode [code\|chat\|vision\|plan]` | affiche ou change le mode d'agent |
-| `/model [nom]` | affiche ou change le modèle Ollama |
-| `/image <chemin>` | attache une image au prochain message |
-| `/clear` | efface l'historique de conversation affiché |
-| `/sessions` | liste les sessions sauvegardées (20 premières) |
-| `/permissions` | affiche la configuration de permissions courante |
-| `/help` | liste les commandes |
+| `/mode [code\|chat\|vision\|plan]` | show or change the agent mode |
+| `/model [name]` | show or change the Ollama model |
+| `/image <path>` | attach an image to the next message |
+| `/clear` | clear the displayed conversation history |
+| `/sessions` | list saved sessions (first 20) |
+| `/permissions` | show the current permission configuration |
+| `/help` | list commands |
 
-Raccourcis clavier : `Entrée` envoyer · `Ctrl+C` annuler le tour en cours (sans quitter) · `Ctrl+D` quitter · `Cmd+T` replier/déplier le raisonnement (« thinking ») en direct · `Échap` vider la ligne de saisie · `y`/`n`/`a` répondre à une demande de permission (`a` = toujours autoriser cette action précise).
+Keyboard shortcuts: `Enter` send · `Ctrl+C` or `Cmd+L` abort the current turn (without quitting) · `Ctrl+D` quit · `Cmd+R` or `Esc` clear the input line · `y`/`n`/`a` answer a permission prompt (`a` = always allow this exact action). The full list lives in [HELP.md](HELP.md).
 
-## Les 7 outils
+## The 7 tools
 
-| Outil | Rôle | Garde-fous |
+| Tool | Purpose | Guardrails |
 |---|---|---|
-| `read_file` | lire un fichier | confiné au `cwd`, refuse `.env` |
-| `write_file` | créer/écraser | idem + création des dossiers parents |
-| `edit_file` | remplacement `{path, old, new}` à matching progressif (exact → espaces → fuzzy) | erreur actionnable si aucun match unique |
-| `move_file` | déplacer/renommer | 2 chemins validés |
-| `list_files` | lister par glob | ignore `node_modules`/`.git`/`dist`, plafond 500 fichiers |
-| `search` | grep contenu | ripgrep si disponible (timeout 30 s), sinon fallback JS ; plafond 200 résultats |
-| `bash` | commande shell | timeout 120 s par défaut, `cwd` projet, sortie (stdout+stderr) tronquée à 20 000 caractères |
+| `read_file` | read a file | confined to the `cwd`, refuses `.env` |
+| `write_file` | create/overwrite | same + creates parent directories |
+| `edit_file` | `{path, old, new}` replacement with progressive matching (exact → whitespace → fuzzy) | actionable error if no unique match |
+| `move_file` | move/rename | both paths validated |
+| `list_files` | list by glob | skips `node_modules`/`.git`/`dist`, capped at 500 files |
+| `search` | grep contents | ripgrep if available (30 s timeout), JS fallback otherwise; capped at 200 results |
+| `bash` | shell command | 120 s default timeout, project `cwd`, output (stdout+stderr) truncated at 20,000 characters |
 
-⚠️ `search` et `list_files` ne sont **pas** protégés contre l'exposition de fichiers `.env` de façon aussi fiable que les quatre outils fichiers — voir la section permissions de [DOCUMENTATION.md](DOCUMENTATION.md) avant usage sur un dépôt contenant des secrets réels.
+⚠️ `search` and `list_files` are **not** protected against exposing `.env` files as reliably as the four file tools — see the permissions section of [DOCUMENTATION.md](DOCUMENTATION.md) before using this on a repository containing real secrets.
 
 ## Configuration
 
-Fusion à précédence croissante (aucune erreur si un fichier est absent) :
+Merged with increasing precedence (no error if a file is missing):
 
 ```
-défauts internes  ←  ~/.qwen-harness/config.json  ←  ./.qwen-harness.json  ←  options CLI
+built-in defaults  ←  ~/.ollama-code/config.json  ←  ./.ollama-code.json  ←  CLI options
 ```
 
-Défauts : modèle `qwen3.5:latest`, hôte `http://localhost:11434`, `numCtx` 32768, `maxTurns` 25, sampling `{temperature:1, top_p:0.95, top_k:20, presence_penalty:1.5}`, `think: true` en mode `code`, permissions `{mode:'normal', rules:[]}`.
+Defaults: model `qwen3.5:latest`, host `http://localhost:11434`, `numCtx` 32768, `maxTurns` 25, sampling `{temperature:1, top_p:0.95, top_k:20, presence_penalty:1.5}`, `think: true` in `code` mode, permissions `{mode:'normal', rules:[]}`.
 
-Les sessions et le journal d'entraînement (`finetune.jsonl`) sont stockés dans `~/.qwen-harness/sessions/`.
+Sessions and the training log (`finetune.jsonl`) are stored in `~/.ollama-code/sessions/`.
 
-## Scripts npm
+## npm scripts
 
-| Script | Commande | Rôle |
+| Script | Command | Purpose |
 |---|---|---|
-| `npm start` | `tsx src/index.ts` | lancer la TUI |
-| `npm run dev` | `tsx watch src/index.ts` | dev avec reload |
-| `npm run typecheck` | `tsc --noEmit` | vérification des types |
-| `npm test` | `vitest run` | tests unitaires |
-| `npm run test:watch` | `vitest` | tests en mode watch |
-| `npm run smoke` | `tsx scripts/smoke.ts` | smoke test de streaming (sans TUI) |
+| `npm start` | `tsx src/index.ts` | launch the TUI |
+| `npm run dev` | `tsx watch src/index.ts` | dev with reload |
+| `npm run typecheck` | `tsc --noEmit` | type checking |
+| `npm test` | `vitest run` | unit tests |
+| `npm run test:watch` | `vitest` | tests in watch mode |
+| `npm run smoke` | `tsx scripts/smoke.ts` | streaming smoke test (no TUI) |
 
-## Structure du projet
+## Project structure
 
 ```
-bin/qwen-harness.js      point d'entrée CLI global (wrapper tsx)
-src/index.ts              parsing des arguments, lancement de la TUI
-src/core/                 cœur headless : agent, client Ollama, config, contexte, permissions, prompts, sessions, types
-src/tools/                les 7 outils + registry (validation/dispatch)
-src/tui/                  TUI Ink (App, commandes slash, composants)
-src/media/                utilitaires image (base64, resize)
-scripts/smoke.ts          smoke test de streaming rapide
-docs/CONTRACTS.md         interfaces TypeScript entre modules (spécification de build)
-docs/RUNTIME_API.md       surface de librairie vérifiée (spécification de build)
+bin/ollama-code.js      global CLI entry point (tsx wrapper)
+src/index.ts              argument parsing, TUI launch
+src/core/                 headless core: agent, Ollama client, config, context, permissions, prompts, sessions, types
+src/tools/                the 7 tools + registry (validation/dispatch)
+src/tui/                  Ink TUI (App, slash commands, components)
+src/media/                image utilities (base64, resize)
+assets/                   logo
+scripts/smoke.ts          quick streaming smoke test
+docs/CONTRACTS.md         TypeScript interfaces between modules (build specification)
+docs/RUNTIME_API.md       verified library surface (build specification)
 ```
 
 ## Tests
@@ -143,17 +221,18 @@ docs/RUNTIME_API.md       surface de librairie vérifiée (spécification de bui
 ```bash
 npm test          # vitest run
 npm run typecheck # tsc --noEmit
-npm run smoke     # vérifie la connexion Ollama + un aller-retour de streaming
+npm run smoke     # checks the Ollama connection + one streaming round-trip
 ```
 
-À ce jour, seule la logique de `edit_file` (matching progressif, `src/tools/fs.ts`) dispose de tests unitaires (`src/tools/fs.test.ts`, 7 cas). Les autres outils, le registry, et toute la couche TUI/CLI n'ont pas encore de couverture automatisée.
+To date, only the `edit_file` logic (progressive matching, `src/tools/fs.ts`) has unit tests (`src/tools/fs.test.ts`, 7 cases). The other tools, the registry, and the whole TUI/CLI layer have no automated coverage yet.
 
-## État d'avancement
+## Project status
 
-Le cœur (client, config, permissions, contexte, sessions, 7 outils), la boucle d'agent (`src/core/agent.ts`) et la TUI (`src/tui/*` + `src/index.ts` + `bin/qwen-harness.js`) sont implémentés — le projet est utilisable de bout en bout. Détail complet, limites connues et feuille de route (couverture de test, fine-tuning LoRA, UI web, multimodal vidéo/audio) : voir [DOCUMENTATION.md](DOCUMENTATION.md).
+The core (client, config, permissions, context, sessions, 7 tools), the agent loop (`src/core/agent.ts`), and the TUI (`src/tui/*` + `src/index.ts` + `bin/ollama-code.js`) are implemented — the project is usable end to end. Full details, known limitations, and roadmap (test coverage, LoRA fine-tuning, web UI, video/audio multimodal): see [DOCUMENTATION.md](DOCUMENTATION.md).
 
-## Documentation complémentaire
+## Further reading
 
-- [DOCUMENTATION.md](DOCUMENTATION.md) — document de référence complet : motivation, architecture, ingénierie de fiabilité pour petit modèle, risques et limites.
-- [docs/CONTRACTS.md](docs/CONTRACTS.md) — interfaces TypeScript entre modules (spécification écrite avant l'implémentation).
-- [docs/RUNTIME_API.md](docs/RUNTIME_API.md) — surface de librairie vérifiée (ollama-js, zod, ink) et contrats d'export par fichier.
+- [HELP.md](HELP.md) — every command and keyboard shortcut in one place.
+- [DOCUMENTATION.md](DOCUMENTATION.md) — full reference document: motivation, architecture, small-model reliability engineering, risks and limitations.
+- [docs/CONTRACTS.md](docs/CONTRACTS.md) — TypeScript interfaces between modules (specification written before implementation).
+- [docs/RUNTIME_API.md](docs/RUNTIME_API.md) — verified library surface (ollama-js, zod, ink) and per-file export contracts.

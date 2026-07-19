@@ -1,7 +1,7 @@
 // src/core/config.ts — default config + layered config loading.
 //
 // Merge order (lowest → highest precedence):
-//   DEFAULT_CONFIG ← ~/.qwen-harness/config.json ← ./.qwen-harness.json ← overrides
+//   DEFAULT_CONFIG ← ~/.ollama-code/config.json ← ./.ollama-code.json ← overrides
 // Missing or invalid JSON files are silently ignored (never throw).
 
 import { homedir } from 'os';
@@ -9,7 +9,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import type { AgentMode, Config } from './types';
 
-// Defaults per PLAN.md / RUNTIME_API.md §4 — Modelfile sampling, 32K context.
+// Defaults per docs/RUNTIME_API.md §4 — Modelfile sampling, 32K context.
 export const DEFAULT_CONFIG: Config = {
   model: 'qwen3.5:latest',
   host: 'http://localhost:11434',
@@ -66,10 +66,10 @@ function mergeConfig(base: Config, layer?: Partial<Config>): Config {
 export function loadConfig(overrides?: Partial<Config>): Config {
   let cfg = DEFAULT_CONFIG;
 
-  const userConfigPath = join(homedir(), '.qwen-harness', 'config.json');
+  const userConfigPath = join(homedir(), '.ollama-code', 'config.json');
   cfg = mergeConfig(cfg, readJsonSafe(userConfigPath));
 
-  const projectConfigPath = join(process.cwd(), '.qwen-harness.json');
+  const projectConfigPath = join(process.cwd(), '.ollama-code.json');
   cfg = mergeConfig(cfg, readJsonSafe(projectConfigPath));
 
   cfg = mergeConfig(cfg, overrides);

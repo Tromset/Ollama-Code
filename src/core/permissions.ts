@@ -1,4 +1,4 @@
-// src/core/permissions.ts — allow/ask/deny policy engine (Wave 2B).
+// src/core/permissions.ts — allow/ask/deny policy engine.
 //
 // Pure decision function: createPermissions(cfg).check(req) never mutates cfg and never
 // touches the filesystem/network. Hard denies (`.env`, destructive bash) win over everything,

@@ -1,4 +1,4 @@
-// src/tui/App.tsx — Ink + React TUI for qwen-harness.
+// src/tui/App.tsx — Ink + React TUI for ollama-code.
 //
 // Wires the headless agent loop to an interactive terminal UI: streamed thinking/content,
 // tool call display, diff previews before writes, permission prompts (y/n/a), slash commands,
@@ -55,7 +55,9 @@ export default function App({ config }: AppProps): React.JSX.Element {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [usage, setUsage] = useState<UsageStats>({ used: 0, max: config.numCtx, pct: 0 });
-  const [thinkingCollapsed, setThinkingCollapsed] = useState(true);
+  // The live thinking block is always collapsed (the toggle shortcut was removed);
+  // the full thinking text is flushed into the log at the end of each turn.
+  const [thinkingCollapsed] = useState(true);
   const [liveThinking, setLiveThinking] = useState('');
   const [liveContent, setLiveContent] = useState('');
   const [pendingImages, setPendingImages] = useState<string[]>([]);
@@ -88,7 +90,7 @@ export default function App({ config }: AppProps): React.JSX.Element {
     const registry = createRegistry();
     const permissions = createPermissions(config.permissions);
     const context = createContext(config, client);
-    const session = createSessionStore(join(homedir(), '.qwen-harness', 'sessions'));
+    const session = createSessionStore(join(homedir(), '.ollama-code', 'sessions'));
 
     const a = createAgent({
       client,
@@ -187,7 +189,7 @@ export default function App({ config }: AppProps): React.JSX.Element {
         setLiveContent('');
         setPendingImages([]);
       },
-      listSessions: () => createSessionStore(join(homedir(), '.qwen-harness', 'sessions')).list(),
+      listSessions: () => createSessionStore(join(homedir(), '.ollama-code', 'sessions')).list(),
       showPermissions: () => {
         const p = configRef.current.permissions;
         const rules =
@@ -246,7 +248,8 @@ export default function App({ config }: AppProps): React.JSX.Element {
       return;
     }
 
-    if (key.ctrl && inputChar === 'c') {
+    // Abort the current turn: Ctrl+C or Cmd+L.
+    if ((key.ctrl && inputChar === 'c') || (key.meta && inputChar === 'l')) {
       agentRef.current?.abort();
       setBusy(false);
       notice('Aborted.');
@@ -260,8 +263,9 @@ export default function App({ config }: AppProps): React.JSX.Element {
 
     if (busy) return;
 
-    if (key.meta && inputChar === 't') {
-      setThinkingCollapsed((c) => !c);
+    // Clear the input line: Cmd+R (Escape also works, below).
+    if (key.meta && inputChar === 'r') {
+      setInput('');
       return;
     }
 
@@ -327,7 +331,7 @@ export default function App({ config }: AppProps): React.JSX.Element {
       <InputLine value={input} disabled={busy || pendingPermission != null} />
 
       <Text dimColor>
-        Enter send · Ctrl+C abort · Ctrl+D quit · Cmd+t toggle thinking · /help
+        Enter send · Ctrl+C / Cmd+L abort · Cmd+R clear input · Ctrl+D quit · /help
       </Text>
     </Box>
   );

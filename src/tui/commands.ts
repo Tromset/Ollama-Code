@@ -22,8 +22,7 @@ export interface CommandActions {
   showPermissions(): void;
   help(): void;
   notice(text: string): void;
-  // Not in the original suggested shape, but required for `/mode` and `/model` with no
-  // argument to print the *current* value — see final report for this small deviation.
+  // Required for `/mode` and `/model` with no argument to print the *current* value.
   getMode(): AgentMode;
   getModel(): string;
 }
@@ -37,7 +36,7 @@ export const COMMANDS: CommandSpec[] = [
   { name: '/mode', description: 'Show or set the agent mode (code | chat | vision | plan)' },
   { name: '/model', description: 'Show or set the Ollama model name' },
   { name: '/image', description: 'Attach an image file to the next message' },
-  { name: '/clear', description: 'Clear the conversation and display log' },
+  { name: '/clear', description: 'Clear the displayed conversation log' },
   { name: '/sessions', description: 'List saved sessions' },
   { name: '/permissions', description: 'Show the current permission mode and rules' },
   { name: '/help', description: 'Show this list of commands' },
@@ -102,7 +101,7 @@ export async function runCommand(input: string, actions: CommandActions): Promis
 
     case '/clear': {
       actions.clear();
-      actions.notice('Conversation cleared.');
+      actions.notice('Display cleared.');
       return true;
     }
 

@@ -1,8 +1,7 @@
-// src/core/agent.ts — the agentic loop (Wave 3 / Wave C).
+// src/core/agent.ts — the agentic loop.
 //
 // Wires together the client, tool registry, permission checker, context manager, and session
-// store into the single interactive loop described in docs/CONTRACTS.md §7. This is the only
-// file in this wave: every dependency below is already built and typechecked.
+// store into the single interactive loop described in docs/CONTRACTS.md §7.
 //
 // Key behaviors (see docs/CONTRACTS.md §7 and RUNTIME_API.md §4 for the full spec):
 //   - Config fields are read LIVE at call time (never cached) since the TUI mutates the same

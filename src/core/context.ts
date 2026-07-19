@@ -88,7 +88,7 @@ export function createContext(cfg: Config, client: OllamaClient): ContextManager
         }
         const summaryMsg: Message = {
           role: 'assistant',
-          content: '[Résumé de la conversation antérieure]\n' + summary,
+          content: '[Summary of the earlier conversation]\n' + summary,
         };
         return [...systems, summaryMsg, ...last];
       } catch {

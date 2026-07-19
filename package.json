@@ -1,14 +1,14 @@
 {
-  "name": "qwen-harness",
+  "name": "ollama-code",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Local agentic coding harness for Qwen 3.5 via Ollama (native /api/chat).",
+  "description": "ollama-code — local agentic coding CLI for Qwen 3.5 via Ollama (native /api/chat).",
   "engines": {
     "node": ">=22"
   },
   "bin": {
-    "qwen-harness": "bin/qwen-harness.js"
+    "ollama-code": "bin/ollama-code.js"
   },
   "scripts": {
     "start": "tsx src/index.ts",
