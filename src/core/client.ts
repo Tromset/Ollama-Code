@@ -6,7 +6,7 @@
 
 import { Ollama } from 'ollama';
 import type { ChatResponse, Message as OllamaMessage, Tool as OllamaTool } from 'ollama';
-import type { Capabilities, Config, Message, ToolCall } from './types';
+import type { Capabilities, Config, Message, ModelInfo, ToolCall } from './types';
 
 // ---- Public contract (docs/CONTRACTS.md §2 / RUNTIME_API.md §4) ----
 
@@ -33,6 +33,7 @@ export interface ChatChunk {
 export interface OllamaClient {
   chat(p: ChatParams): AsyncGenerator<ChatChunk>;
   detectCapabilities(model: string): Promise<Capabilities>; // via /api/show
+  listModels(): Promise<ModelInfo[]>; // via /api/tags, recent first
   abort(): void;
 }
 
@@ -84,6 +85,21 @@ class OllamaClientImpl implements OllamaClient {
     } finally {
       p.signal?.removeEventListener('abort', onAbort);
     }
+  }
+
+  async listModels(): Promise<ModelInfo[]> {
+    const res = await this.ollama.list();
+    return res.models
+      .map((m) => ({
+        name: m.name,
+        sizeBytes: m.size,
+        parameterSize: m.details?.parameter_size ?? '',
+        quantization: m.details?.quantization_level ?? '',
+        // Typed `Date` in ollama-js, but a plain JSON string at runtime (no date revival) —
+        // String() covers both, and ISO strings sort correctly lexicographically.
+        modifiedAt: String(m.modified_at ?? ''),
+      }))
+      .sort((a, b) => (a.modifiedAt < b.modifiedAt ? 1 : -1));
   }
 
   async detectCapabilities(model: string): Promise<Capabilities> {

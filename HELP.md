@@ -53,6 +53,17 @@ When a tool call needs approval, the TUI shows a prompt. Answer with a single ke
 | `n` | deny this action |
 | `a` | always allow this **exact** action (adds a session rule matching the exact command/path — it does not generalize to a class of actions) |
 
+## Model picker keys
+
+`/model` with no argument opens an interactive list of every model installed locally (from `GET /api/tags`), with parameter size, quantization and disk size per row, and the active model marked `● current`. Navigate with:
+
+| Key | Effect |
+|---|---|
+| `↑` / `k` | move up (wraps around) |
+| `↓` / `j` | move down (wraps around) |
+| `Enter` | switch to the selected model (takes effect on the next message) |
+| `Esc` / `Ctrl+C` | close the picker without changing anything |
+
 ## Slash commands
 
 Lines starting with `/` are handled by the TUI and never sent to the model.
@@ -61,8 +72,8 @@ Lines starting with `/` are handled by the TUI and never sent to the model.
 |---|---|
 | `/mode` | show the current agent mode |
 | `/mode <code\|chat\|vision\|plan>` | switch agent mode (also resets `think`: `true` for `code`, `false` otherwise) |
-| `/model` | show the current Ollama model |
-| `/model <name>` | switch to another Ollama model |
+| `/model` | open an interactive picker of all installed models (see "Model picker keys" above) |
+| `/model <name>` | switch to another Ollama model directly |
 | `/image <path>` | attach an image file to the next message (vision) |
 | `/clear` | clear the displayed conversation log (the model's context/history is not reset) |
 | `/sessions` | list saved sessions (first 20) |

@@ -155,7 +155,7 @@ Details, guardrails, and diagrams: see [DOCUMENTATION.md](DOCUMENTATION.md), "Ag
 | Command | Purpose |
 |---|---|
 | `/mode [code\|chat\|vision\|plan]` | show or change the agent mode |
-| `/model [name]` | show or change the Ollama model |
+| `/model [name]` | pick from installed models (no arg opens an interactive picker), or set one directly |
 | `/image <path>` | attach an image to the next message |
 | `/clear` | clear the displayed conversation history |
 | `/sessions` | list saved sessions (first 20) |

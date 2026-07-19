@@ -10,18 +10,19 @@ import { homedir } from 'os';
 import { join } from 'path';
 import type { Agent } from '../core/agent';
 import { createAgent } from '../core/agent';
-import { createClient } from '../core/client';
+import { createClient, type OllamaClient } from '../core/client';
 import { loadConfig, defaultThinkFor } from '../core/config';
 import { createContext } from '../core/context';
 import { createPermissions } from '../core/permissions';
 import { createSessionStore } from '../core/session';
 import { createRegistry } from '../tools/registry';
 import { imageToBase64 } from '../media/images';
-import type { Config, PermissionRequest, ToolCall } from '../core/types';
+import type { Config, ModelInfo, PermissionRequest, ToolCall } from '../core/types';
 import { COMMANDS, runCommand, type CommandActions } from './commands';
 import {
   InputLine,
   LogLine,
+  ModelPicker,
   PermissionPrompt,
   Pixels,
   StatusBar,
@@ -69,6 +70,9 @@ export default function App({ config }: AppProps): React.JSX.Element {
     req: PermissionRequest;
     preview?: string;
   } | null>(null);
+  const [modelPick, setModelPick] = useState<{ models: ModelInfo[]; index: number } | null>(
+    null,
+  );
 
   const configRef = useRef(config);
   configRef.current = config;
@@ -78,6 +82,7 @@ export default function App({ config }: AppProps): React.JSX.Element {
   const liveThinkingRef = useRef('');
   const liveContentRef = useRef('');
   const agentRef = useRef<Agent | null>(null);
+  const clientRef = useRef<OllamaClient | null>(null);
   const sendRef = useRef<((text: string, images?: string[]) => Promise<void>) | null>(null);
 
   const appendLog = useCallback((item: Omit<LogItem, 'id'>) => {
@@ -91,6 +96,7 @@ export default function App({ config }: AppProps): React.JSX.Element {
 
   const agent = useMemo(() => {
     const client = createClient({ host: config.host });
+    clientRef.current = client;
     const registry = createRegistry();
     const permissions = createPermissions(config.permissions);
     const context = createContext(config, client);
@@ -183,6 +189,15 @@ export default function App({ config }: AppProps): React.JSX.Element {
       setModel: (name) => {
         configRef.current.model = name;
       },
+      listModels: () => {
+        const client = clientRef.current;
+        if (!client) return Promise.reject(new Error('Client not ready'));
+        return client.listModels();
+      },
+      openModelPicker: (models) => {
+        const idx = models.findIndex((m) => m.name === configRef.current.model);
+        setModelPick({ models, index: idx === -1 ? 0 : idx });
+      },
       addImage: async (path) => {
         const b64 = await imageToBase64(path);
         setPendingImages((imgs) => [...imgs, b64]);
@@ -247,6 +262,37 @@ export default function App({ config }: AppProps): React.JSX.Element {
       if (inputChar === 'a') {
         setPendingPermission(null);
         resolve({ decision: 'allow', always: true });
+        return;
+      }
+      return;
+    }
+
+    // Model picker overlay: swallows every key so typing can't leak into the input line.
+    // Ctrl+C closes it (nothing is running to abort — the picker only opens while idle).
+    if (modelPick) {
+      if (key.escape || (key.ctrl && inputChar === 'c')) {
+        setModelPick(null);
+        return;
+      }
+      if (key.ctrl && inputChar === 'd') {
+        exit();
+        return;
+      }
+      if (key.return) {
+        const chosen = modelPick.models[modelPick.index];
+        setModelPick(null);
+        if (chosen) {
+          commandActions.setModel(chosen.name);
+          notice(`Model set to ${chosen.name}`);
+        }
+        return;
+      }
+      if (key.upArrow || inputChar === 'k') {
+        setModelPick((p) => p && { ...p, index: (p.index - 1 + p.models.length) % p.models.length });
+        return;
+      }
+      if (key.downArrow || inputChar === 'j') {
+        setModelPick((p) => p && { ...p, index: (p.index + 1) % p.models.length });
         return;
       }
       return;
@@ -365,13 +411,22 @@ export default function App({ config }: AppProps): React.JSX.Element {
         {pendingPermission ? (
           <PermissionPrompt req={pendingPermission.req} preview={pendingPermission.preview} />
         ) : null}
+
+        {modelPick ? (
+          <ModelPicker
+            models={modelPick.models}
+            index={modelPick.index}
+            currentModel={configRef.current.model}
+            maxVisible={Math.max(3, Math.min(10, termRows - 14))}
+          />
+        ) : null}
       </Box>
 
       <Box>
         <Pixels art={FLOWER_ART} />
       </Box>
 
-      <InputLine value={input} disabled={busy || pendingPermission != null} />
+      <InputLine value={input} disabled={busy || pendingPermission != null || modelPick != null} />
 
       <Text color={PALETTE.dim}>
         Enter send · Ctrl+C / Cmd+J abort · Cmd+R clear input · Cmd+L thinking · Ctrl+D quit ·

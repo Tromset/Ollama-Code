@@ -16,6 +16,15 @@ export interface TailResult {
  * terminal (including scrollback) and re-printing everything on every render — the source
  * of the banner flicker. Capping the tail keeps the frame small so that path never runs.
  */
+/** Human-readable size, decimal units like `ollama list`: "4.7 GB", "850 MB", "512 B". */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '?';
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
+  if (bytes >= 1e6) return `${Math.round(bytes / 1e6)} MB`;
+  if (bytes >= 1e3) return `${Math.round(bytes / 1e3)} KB`;
+  return `${Math.round(bytes)} B`;
+}
+
 export function tailLines(text: string, maxRows: number, columns: number): TailResult {
   if (!text) return { text, hidden: 0 };
 

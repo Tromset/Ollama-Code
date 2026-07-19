@@ -1,5 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { tailLines } from './text';
+import { formatBytes, tailLines } from './text';
+
+describe('formatBytes', () => {
+  it('formats bytes', () => {
+    expect(formatBytes(0)).toBe('0 B');
+    expect(formatBytes(512)).toBe('512 B');
+  });
+
+  it('formats kilobytes and megabytes as integers', () => {
+    expect(formatBytes(2_500)).toBe('3 KB');
+    expect(formatBytes(850_000_000)).toBe('850 MB');
+  });
+
+  it('formats gigabytes with one decimal', () => {
+    expect(formatBytes(4_700_000_000)).toBe('4.7 GB');
+  });
+
+  it('returns ? for invalid input', () => {
+    expect(formatBytes(Number.NaN)).toBe('?');
+    expect(formatBytes(-1)).toBe('?');
+    expect(formatBytes(Number.POSITIVE_INFINITY)).toBe('?');
+  });
+});
 
 describe('tailLines', () => {
   it('returns short text untouched', () => {

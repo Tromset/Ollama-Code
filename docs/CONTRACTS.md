@@ -111,6 +111,7 @@ export interface ChatChunk {
 export interface OllamaClient {
   chat(p: ChatParams): AsyncGenerator<ChatChunk>;
   detectCapabilities(model: string): Promise<Capabilities>; // via /api/show
+  listModels(): Promise<ModelInfo[]>; // via /api/tags, recent first
   abort(): void;
 }
 
@@ -219,7 +220,9 @@ export function imageToBase64(path: string, maxDim?: number): Promise<string>;
 Ink app (React 19.2, alternate screen). Renders streamed thinking (collapsible), content, tool calls,
 a **diff preview before writes**, and an approval prompt (`y` / `n` / `a`=always). Status bar shows mode,
 model, and **context usage** (used/max from the final chunk). Slash commands:
-`/mode /model /image /clear /sessions /permissions /help`. `src/index.ts` parses args and launches the TUI.
+`/mode /model /image /clear /sessions /permissions /help`. `/model` with no argument opens an
+interactive picker of all installed models (arrow/`j`/`k` navigation, `Enter` select, `Esc` cancel).
+`src/index.ts` parses args and launches the TUI.
 
 ---
 
