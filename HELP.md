@@ -73,7 +73,7 @@ Lines starting with `/` are handled by the TUI and never sent to the model.
 | `/mode` | show the current agent mode |
 | `/mode <code\|chat\|vision\|plan>` | switch agent mode (also resets `think`: `true` for `code`, `false` otherwise) |
 | `/model` | open an interactive picker of all installed models (see "Model picker keys" above) |
-| `/model <name>` | switch to another Ollama model directly |
+| `/model <name>` | switch to another Ollama model directly; a Fly model (`flycoder0.3`, `Tromset/fly1.1:lite`, …) brings its own context size, sampling and system prompt |
 | `/image <path>` | attach an image file to the next message (vision) |
 | `/clear` | clear the displayed conversation log (the model's context/history is not reset) |
 | `/sessions` | list saved sessions (first 20) |

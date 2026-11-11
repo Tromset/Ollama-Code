@@ -111,6 +111,7 @@ export interface ChatChunk {
 export interface OllamaClient {
   chat(p: ChatParams): AsyncGenerator<ChatChunk>;
   detectCapabilities(model: string): Promise<Capabilities>; // via /api/show
+  describeModel(model: string): Promise<ModelDescription>; // via /api/show: capabilities + Modelfile num_ctx / SYSTEM (core/models.ts)
   listModels(): Promise<ModelInfo[]>; // via /api/tags, recent first
   abort(): void;
 }

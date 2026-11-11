@@ -80,7 +80,7 @@ export function createAgent(deps: {
 
   async function send(userText: string, images?: string[]): Promise<void> {
     // (1) Upsert the leading system message for the CURRENT mode.
-    const sys = systemPrompt(config.mode);
+    const sys = systemPrompt(config.mode, config.modelPrompt);
     if (messages.length === 0 || messages[0].role !== 'system') {
       messages = [{ role: 'system', content: sys }, ...messages];
     } else if (messages[0].content !== sys) {
