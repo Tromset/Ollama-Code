@@ -4,15 +4,16 @@
 // tool call display, diff previews before writes, permission prompts (y/n/a), slash commands,
 // and a status bar with mode/model/context usage.
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Static, Text, useApp, useInput } from 'ink';
 import { homedir } from 'os';
 import { join } from 'path';
 import type { Agent } from '../core/agent';
 import { createAgent } from '../core/agent';
 import { createClient, type OllamaClient } from '../core/client';
-import { loadConfig, defaultThinkFor } from '../core/config';
+import { loadConfig, loadExplicitConfig, defaultThinkFor } from '../core/config';
 import { createContext } from '../core/context';
+import { applyModel, parseFlyModel, pickFlyDefault, type ModelDescription } from '../core/models';
 import { createPermissions } from '../core/permissions';
 import { createSessionStore } from '../core/session';
 import { createRegistry } from '../tools/registry';
@@ -46,6 +47,8 @@ type PermissionDecision = { decision: 'allow' | 'deny'; always?: boolean };
 
 export interface AppProps {
   config: Config;
+  // What the user set themselves (config files, CLI flags): wins over a model's profile.
+  explicit?: Partial<Config>;
 }
 
 let logIdCounter = 0;
@@ -53,7 +56,9 @@ function nextLogId(): number {
   return ++logIdCounter;
 }
 
-export default function App({ config }: AppProps): React.JSX.Element {
+const NOTHING_EXPLICIT: Partial<Config> = {};
+
+export default function App({ config, explicit = NOTHING_EXPLICIT }: AppProps): React.JSX.Element {
   const { exit } = useApp();
 
   const [log, setLog] = useState<LogItem[]>([]);
@@ -180,14 +185,52 @@ export default function App({ config }: AppProps): React.JSX.Element {
     }
   };
 
+  // Switch the active model. A Fly model is read from Ollama (/api/show) so the harness
+  // runs it with its own Modelfile: context size, sampling, system prompt, capabilities.
+  const selectModel = useCallback(
+    async (name: string) => {
+      const cfg = configRef.current;
+      cfg.model = name; // at once, so a message sent meanwhile already goes to this model
+      let description: ModelDescription | undefined;
+      if (parseFlyModel(name)) {
+        try {
+          description = await clientRef.current?.describeModel(name);
+        } catch {
+          // Not installed or Ollama unreachable: applyModel says so.
+        }
+        if (cfg.model !== name) return; // another model was chosen while this one was read
+      }
+      for (const line of applyModel(cfg, name, description, explicit)) notice(line);
+      setUsage((u) => ({ ...u, max: cfg.numCtx, pct: Math.round((u.used / cfg.numCtx) * 100) }));
+    },
+    [explicit, notice],
+  );
+
+  // At start-up: when the user chose no model and a Fly coding model is installed, start on
+  // it; then apply the profile of whichever model is active.
+  useEffect(() => {
+    void (async () => {
+      let name = configRef.current.model;
+      if (explicit.model === undefined) {
+        try {
+          name = pickFlyDefault((await clientRef.current?.listModels()) ?? []) ?? name;
+        } catch {
+          // Ollama unreachable: keep the configured model; the first message reports it.
+        }
+      }
+      await selectModel(name);
+    })();
+    // Once, on mount.
+  }, []);
+
   const commandActions: CommandActions = useMemo(
     () => ({
       setMode: (mode) => {
         configRef.current.mode = mode;
-        configRef.current.think = defaultThinkFor(mode);
+        configRef.current.think = defaultThinkFor(mode, configRef.current.capabilities);
       },
       setModel: (name) => {
-        configRef.current.model = name;
+        void selectModel(name);
       },
       listModels: () => {
         const client = clientRef.current;
@@ -225,7 +268,7 @@ export default function App({ config }: AppProps): React.JSX.Element {
       getMode: () => configRef.current.mode,
       getModel: () => configRef.current.model,
     }),
-    [notice],
+    [notice, selectModel],
   );
 
   const submit = useCallback(async () => {
@@ -439,5 +482,5 @@ export default function App({ config }: AppProps): React.JSX.Element {
 /** Bootstrap helper used by index.ts — loads config and returns the root element. */
 export function createApp(configOverrides?: Partial<Config>): React.JSX.Element {
   const config = loadConfig(configOverrides);
-  return <App config={config} />;
+  return <App config={config} explicit={loadExplicitConfig(configOverrides)} />;
 }

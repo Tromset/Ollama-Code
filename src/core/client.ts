@@ -7,6 +7,7 @@
 import { Ollama } from 'ollama';
 import type { ChatResponse, Message as OllamaMessage, Tool as OllamaTool } from 'ollama';
 import type { Capabilities, Config, Message, ModelInfo, ToolCall } from './types';
+import type { ModelDescription } from './models';
 
 // ---- Public contract (docs/CONTRACTS.md §2 / RUNTIME_API.md §4) ----
 
@@ -33,6 +34,7 @@ export interface ChatChunk {
 export interface OllamaClient {
   chat(p: ChatParams): AsyncGenerator<ChatChunk>;
   detectCapabilities(model: string): Promise<Capabilities>; // via /api/show
+  describeModel(model: string): Promise<ModelDescription>; // via /api/show: capabilities + Modelfile num_ctx / SYSTEM
   listModels(): Promise<ModelInfo[]>; // via /api/tags, recent first
   abort(): void;
 }
@@ -103,13 +105,24 @@ class OllamaClientImpl implements OllamaClient {
   }
 
   async detectCapabilities(model: string): Promise<Capabilities> {
+    return (await this.describeModel(model)).capabilities;
+  }
+
+  async describeModel(model: string): Promise<ModelDescription> {
     const show = await this.ollama.show({ model });
     const caps: string[] = show.capabilities ?? [];
+    // `parameters` is the Modelfile's PARAMETER lines as text: "num_ctx    65536".
+    const numCtx = /^num_ctx\s+(\d+)\s*$/m.exec(show.parameters ?? '')?.[1];
+    const system = (show.system ?? '').trim();
     return {
-      completion: caps.includes('completion'),
-      vision: caps.includes('vision'),
-      tools: caps.includes('tools'),
-      thinking: caps.includes('thinking'),
+      capabilities: {
+        completion: caps.includes('completion'),
+        vision: caps.includes('vision'),
+        tools: caps.includes('tools'),
+        thinking: caps.includes('thinking'),
+      },
+      ...(numCtx ? { numCtx: Number(numCtx) } : {}),
+      ...(system ? { system } : {}),
     };
   }
 

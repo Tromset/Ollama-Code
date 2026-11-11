@@ -302,6 +302,28 @@ DEFAULT_CONFIG  ←  ~/.ollama-code/config.json  ←  ./.ollama-code.json  ←  
 
 Defaults: model `qwen3.5:latest`, `numCtx` 32768, `maxTurns` 25, Modelfile sampling (`temp 1, top_p 0.95, top_k 20, presence_penalty 1.5`), `think: true`. Nested objects (`sampling`, `permissions`) are deep-merged — with one exception: if a layer provides `permissions.rules`, that array **replaces** the previous layer's entirely rather than extending it.
 
+### 5.4 The Fly model family — [src/core/models.ts](src/core/models.ts)  ✅
+
+The Fly models (`flycoder0.3`, `flycoder0.3fast`, `flycoder0.3pro`, the local alias `flycoder`, `fly1.0:ultra`, `fly1.1:lite`, `flymotion0.2`) are Ollama Modelfiles: a base model with a context size, sampling values and a system prompt chosen with a benchmark. The harness defaults were chosen for a bare Qwen 3.5 and would silently replace all three: `options` sent with a request override the Modelfile's `PARAMETER` lines, and a `system` message replaces its `SYSTEM`.
+
+So the harness recognises the family by name and steps back. `parseFlyModel` accepts any name that starts with `fly`, with or without a namespace (`Tromset/…`) or a tag, and gives it a role: `coder`, `agent` (`…pro`, `:ultra`), `motion` (`flymotion…`) or `router`. No version is listed in the code, so a new Fly model works on the day it is published. When a Fly model becomes active (at start-up or through `/model`), `OllamaClient.describeModel` reads it with `/api/show` and `applyModel` rewrites the live `Config`:
+
+| Setting | Other models | Fly model |
+|---|---|---|
+| `numCtx` | 32768 | the Modelfile's `num_ctx` (131072 as a conversation budget when it sets none, as for the cloud model `fly1.0:ultra`) |
+| `sampling` | the Qwen defaults | not sent: the Modelfile's values apply |
+| system message | the mode prompt | the Modelfile's `SYSTEM`, then the mode prompt |
+| `think` | on in `code` mode | the same, but never for a model without the `thinking` capability |
+| mode | as configured | `chat` when the model cannot call tools or is not a coding model |
+
+Three details:
+
+- **What the user sets wins.** `loadExplicitConfig` returns the config files and CLI flags without the defaults, and `applyModel` puts those values above the profile.
+- **One rule is reworded in `code` mode.** FlyCoder's prompt says "Never claim that you ran code or tests", which is false once tools run them. `systemPrompt` appends "unless a tool actually ran them", the wording `flycoder0.3pro` already ships.
+- **Start-up.** When the user chose no model and a Fly coding model is installed, the most recent one is used in place of `qwen3.5:latest`.
+
+Switching back to another model restores the defaults. A Fly model that Ollama does not have produces a notice with the `ollama pull` command.
+
 ---
 
 ## 6. Small-model reliability engineering

@@ -7,7 +7,7 @@
 import { homedir } from 'os';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import type { AgentMode, Config } from './types';
+import type { AgentMode, Capabilities, Config } from './types';
 
 // Defaults per docs/RUNTIME_API.md §4 — Modelfile sampling, 32K context.
 export const DEFAULT_CONFIG: Config = {
@@ -30,7 +30,10 @@ export const DEFAULT_CONFIG: Config = {
 };
 
 // Thinking defaults to on for code mode (needs reasoning for edits/tools), off otherwise.
-export function defaultThinkFor(mode: AgentMode): Config['think'] {
+// When the model's capabilities are known and it cannot think, it is never asked to
+// (Ollama rejects `think: true` on such a model).
+export function defaultThinkFor(mode: AgentMode, caps?: Capabilities): Config['think'] {
+  if (caps && !caps.thinking) return false;
   return mode === 'code' ? true : false;
 }
 
@@ -63,16 +66,38 @@ function mergeConfig(base: Config, layer?: Partial<Config>): Config {
   };
 }
 
+// The config layers, lowest precedence first: user file, project file, overrides (CLI flags).
+function userLayers(overrides?: Partial<Config>): (Partial<Config> | undefined)[] {
+  return [
+    readJsonSafe(join(homedir(), '.ollama-code', 'config.json')),
+    readJsonSafe(join(process.cwd(), '.ollama-code.json')),
+    overrides,
+  ];
+}
+
 export function loadConfig(overrides?: Partial<Config>): Config {
   let cfg = DEFAULT_CONFIG;
+  for (const layer of userLayers(overrides)) cfg = mergeConfig(cfg, layer);
+  // A fresh top level and `sampling`: the active model's profile rewrites them in place
+  // (core/models.ts), which must never reach DEFAULT_CONFIG.
+  return { ...cfg, sampling: { ...cfg.sampling } };
+}
 
-  const userConfigPath = join(homedir(), '.ollama-code', 'config.json');
-  cfg = mergeConfig(cfg, readJsonSafe(userConfigPath));
-
-  const projectConfigPath = join(process.cwd(), '.ollama-code.json');
-  cfg = mergeConfig(cfg, readJsonSafe(projectConfigPath));
-
-  cfg = mergeConfig(cfg, overrides);
-
-  return cfg;
+/**
+ * Only what the user set themselves (config files and CLI flags), without the defaults.
+ * A model profile (core/models.ts) fills in the rest, so these values always win over it.
+ */
+export function loadExplicitConfig(overrides?: Partial<Config>): Partial<Config> {
+  let explicit: Partial<Config> = {};
+  for (const layer of userLayers(overrides)) {
+    if (!layer) continue;
+    explicit = {
+      ...explicit,
+      ...layer,
+      ...(explicit.sampling || layer.sampling
+        ? { sampling: { ...explicit.sampling, ...layer.sampling } }
+        : {}),
+    };
+  }
+  return explicit;
 }

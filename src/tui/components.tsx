@@ -1,6 +1,7 @@
 // src/tui/components.tsx — presentational Ink components for the TUI.
 
 import { Box, Text } from 'ink';
+import { isFlyModel } from '../core/models';
 import type { AgentMode, ModelInfo, PermissionRequest } from '../core/types';
 import type { PixelArt } from './pixels';
 import { formatBytes } from './text';
@@ -159,6 +160,7 @@ export function ModelPicker(props: {
             <Text bold={selected} color={selected ? PALETTE.pink : PALETTE.text}>
               {m.name}
             </Text>
+            {isFlyModel(m.name) ? <Text color={PALETTE.pink}>{'  '}Fly</Text> : null}
             {meta ? <Text color={PALETTE.dim}>{'  '}{meta}</Text> : null}
             {m.name === currentModel ? <Text color={PALETTE.green}> ● current</Text> : null}
           </Text>

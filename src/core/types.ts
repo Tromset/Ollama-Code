@@ -80,10 +80,20 @@ export interface Config {
   numCtx: number; // default 32768 — MUST be sent on every request
   mode: AgentMode; // default 'code'
   maxTurns: number; // default 25
-  sampling: Sampling; // Modelfile defaults, overridable
+  sampling: Partial<Sampling>; // sent as Ollama options; a key left out falls back to the Modelfile
   think: boolean | 'low' | 'medium' | 'high'; // default true in code mode
   permissions: PermissionConfig; // see permission types below
   kvCacheType?: 'f16' | 'q8_0'; // maps to OLLAMA_KV_CACHE_TYPE hint
+  // Set by core/models.ts for the active model when it is a Fly model, never by the user:
+  capabilities?: Capabilities; // what /api/show reported
+  modelPrompt?: ModelPrompt; // the Modelfile's own system prompt
+}
+
+// The system prompt a model ships in its Modelfile. `standalone` models (not coding models)
+// get it alone; the others get it followed by the harness's mode prompt.
+export interface ModelPrompt {
+  system: string;
+  standalone: boolean;
 }
 
 // ---- Permissions (shared: Config + ToolContext reference these) ----

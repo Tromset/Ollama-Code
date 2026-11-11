@@ -188,6 +188,18 @@ built-in defaults  ←  ~/.ollama-code/config.json  ←  ./.ollama-code.json  �
 
 Defaults: model `qwen3.5:latest`, host `http://localhost:11434`, `numCtx` 32768, `maxTurns` 25, sampling `{temperature:1, top_p:0.95, top_k:20, presence_penalty:1.5}`, `think: true` in `code` mode, permissions `{mode:'normal', rules:[]}`.
 
+### Fly models
+
+Models of the Fly family are recognised by name and run with their own Modelfile, not with the Qwen defaults above. A Fly model is any model whose name starts with `fly`, with or without a namespace or a tag: `flycoder`, `flycoder0.3`, `flycoder0.3fast`, `Tromset/flycoder0.3pro`, `Tromset/fly1.1:lite`, `Tromset/fly1.0:ultra`, and versions to come.
+
+- **Start-up**: with no `model` in your config and no `--model`, the most recently installed Fly coding model is used. `--model` or a `model` in a config file always wins.
+- **Context**: `numCtx` is the Modelfile's `num_ctx`, read from Ollama (65,536 for `flycoder0.3`, 32,768 for `flycoder0.3fast`, 8,192 for `fly1.1:lite`).
+- **Sampling**: the harness sends none, so the Modelfile's temperature, `top_p`, `top_k` and penalties apply.
+- **System prompt**: the Modelfile's prompt is kept and the short mode prompt is added after it.
+- **Capabilities**: thinking is requested only from a model that has it, and a model that cannot call tools starts in `chat` mode. Fly models that do not write code (`flymotion…`, `flycoder0.3:router`) run in `chat` mode on their own prompt.
+
+Anything you set yourself (`numCtx`, `sampling`, `think`, `--mode`) overrides the Fly profile. In the `/model` picker, Fly models are marked `Fly`.
+
 Sessions and the training log (`finetune.jsonl`) are stored in `~/.ollama-code/sessions/`.
 
 ## npm scripts

@@ -20,6 +20,8 @@ Usage:
 
 Options:
   --model <name>        Ollama model (default: qwen3.5:latest)
+                        Fly models (flycoder0.3, Tromset/fly1.1:lite, ...) run with their
+                        own Modelfile; an installed one is used when no model is set
   --mode <mode>         Agent mode: code | chat | vision | plan (default: code)
   --num-ctx <n>         Context window size (default: 32768)
   --host <url>          Ollama host (default: http://localhost:11434)
