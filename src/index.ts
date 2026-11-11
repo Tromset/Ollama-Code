@@ -17,6 +17,7 @@ function printHelp(): void {
 Usage:
   ollama-code                        Launch the TUI (interactive)
   ollama-code [options]
+  ollama-code update                 Update ollama-code to the latest version
 
 Options:
   --model <name>        Ollama model (default: qwen3.5:latest)

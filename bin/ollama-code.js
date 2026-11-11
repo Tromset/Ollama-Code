@@ -8,6 +8,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+// `ollama-code update` is handled here, before tsx: it must work even when the sources or
+// node_modules it is about to replace are broken.
+if (process.argv[2] === 'update') {
+  const { update } = await import('./update.js');
+  process.exit(update(root));
+}
 const tsxLocal = join(root, 'node_modules', '.bin', 'tsx');
 const tsx = existsSync(tsxLocal) ? tsxLocal : 'tsx';
 const entry = join(root, 'src', 'index.ts');

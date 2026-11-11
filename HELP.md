@@ -8,6 +8,7 @@ Everything you can type or press in `ollama-code`, in one place. For installatio
 |---|---|
 | `npm start` | launch the TUI from the repository |
 | `ollama-code` | launch the TUI from anywhere (after `npm link`) |
+| `ollama-code update` | update ollama-code to the latest version (`git pull --ff-only` + `npm install` in its clone) |
 | `npm run dev` | launch with auto-reload on file changes |
 | `npm run smoke` | quick streaming smoke test — no TUI, verifies the Ollama connection |
 
