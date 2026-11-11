@@ -103,7 +103,7 @@ ollama-code --help      # prints usage
 ollama-code update
 ```
 
-This fast-forwards the clone to the latest version (`git pull --ff-only`) and reinstalls its dependencies. The `npm link` symlink keeps pointing at the same folder, so there is nothing to remove or relink. If you changed files in the clone and they conflict, the update stops without modifying anything.
+This fast-forwards the clone to the latest version (`git pull --ff-only`) and reinstalls its dependencies (`npm ci`). A `package-lock.json` that npm modified locally is restored first. The `npm link` symlink keeps pointing at the same folder, so there is nothing to remove or relink. If you changed files in the clone and they conflict, the update stops without modifying anything.
 
 Under the hood, `bin/ollama-code.js` resolves `tsx` from the package's own `node_modules` and points explicitly at its own `tsconfig.json` (rather than letting `tsx` resolve one from the current directory) — so the command works correctly even when invoked from outside the repository.
 

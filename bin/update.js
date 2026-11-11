@@ -1,7 +1,7 @@
 // `ollama-code update` — bring this installation up to date with one command.
 //
 // ollama-code is installed as a git clone linked with `npm link` (README, Step 3), so an
-// update is a fast-forward `git pull` in that clone followed by `npm install`. This file is
+// update is a fast-forward `git pull` in that clone followed by `npm ci`. This file is
 // plain JavaScript run by node, with no dependency: it still works when the TypeScript
 // sources or node_modules are broken, which is when an update is needed most.
 
@@ -46,6 +46,14 @@ export function update(root) {
   const beforeVersion = version(root);
   console.log(`Updating ollama-code ${beforeVersion} (${before}) in ${root}`);
 
+  // npm rewrites package-lock.json on some machines (another npm version, another platform's
+  // optional packages), and that alone would make git refuse the pull. It is a generated
+  // file whose reference copy is the repository's, so a modified one is put back first.
+  if (run('git', ['status', '--porcelain', '--', 'package-lock.json'], root, true).out) {
+    console.log('Restoring package-lock.json (modified locally by npm).');
+    run('git', ['checkout', '--', 'package-lock.json'], root);
+  }
+
   // --ff-only: never merge or rewrite. Local changes that conflict stop the update here,
   // with git's own message, and nothing is modified.
   if (!run('git', ['pull', '--ff-only'], root).ok) {
@@ -63,8 +71,10 @@ export function update(root) {
   }
 
   console.log('Installing dependencies...');
-  if (!run('npm', ['install', '--no-audit', '--no-fund'], root).ok) {
-    console.error(`\nThe sources are updated but npm install failed. Run it again in ${root}.`);
+  // `npm ci` installs exactly what package-lock.json says and never rewrites it, so the
+  // clone stays clean for the next update.
+  if (!run('npm', ['ci', '--no-audit', '--no-fund'], root).ok) {
+    console.error(`\nThe sources are updated but npm ci failed. Run it again in ${root}.`);
     return 1;
   }
 
