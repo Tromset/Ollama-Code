@@ -12,7 +12,7 @@ const VALID_MODES: readonly AgentMode[] = ['code', 'chat', 'vision', 'plan'];
 const VALID_PERMISSION_MODES: readonly Config['permissions']['mode'][] = ['plan', 'normal', 'yolo'];
 
 function printHelp(): void {
-  console.log(`ollama-code — local agentic coding CLI for Qwen 3.5 via Ollama
+  console.log(`ollama-code — local agentic coding CLI for Fly-ai via Ollama
 
 Usage:
   ollama-code                        Launch the TUI (interactive)

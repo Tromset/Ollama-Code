@@ -4,7 +4,7 @@
 
 # ollama-code
 
-> 100 % local agentic coding harness for **Qwen 3.5 9B** via **Ollama** — no cloud API, no per-token billing, fully owned source code.
+> 100 % local agentic coding harness for **Fly-ai** via **Ollama** — no cloud API, no per-token billing, fully owned source code.
 
 This README covers installation and everyday usage. For the project's motivation, architecture choices, and small-model reliability engineering, see the full reference document: [DOCUMENTATION.md](DOCUMENTATION.md). For a complete list of commands and keyboard shortcuts, see [HELP.md](HELP.md).
 
