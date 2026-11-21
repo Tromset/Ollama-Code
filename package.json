@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "ollama-code — local agentic coding CLI for Qwen 3.5 via Ollama (native /api/chat).",
+  "description": "ollama-code — local agentic coding CLI for Fly-ai via Ollama (native /api/chat).",
   "engines": {
     "node": ">=22"
   },
