@@ -16,7 +16,7 @@ This README covers installation and everyday usage. For the project's motivation
 
 ## Step 1 — Install Ollama
 
-Ollama is the local model server that runs Qwen 3.5 on your machine.
+Ollama is the local model server that runs Fly-ai on your machine.
 
 **macOS**
 

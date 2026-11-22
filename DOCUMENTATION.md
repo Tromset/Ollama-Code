@@ -1,9 +1,9 @@
-# ollama-code — A local agentic harness for Qwen 3.5 9B
+# ollama-code — A local agentic harness for Fly-ai
 
 ### Design, architecture, and small-model reliability engineering
 
 > **Reference document / internal research paper**
-> Version 0.1.0 · Target: Qwen 3.5 9B via Ollama
+> Version 0.1.0 · Target: Fly-ai via Ollama
 > This document explains *why* the project exists, *how* it is designed, and *where* it stands.
 > For installation and everyday usage, see [README.md](README.md). This document complements (without replacing)
 > [docs/CONTRACTS.md](docs/CONTRACTS.md) and [docs/RUNTIME_API.md](docs/RUNTIME_API.md) — the original build
@@ -14,7 +14,7 @@
 
 ## Abstract
 
-`ollama-code` is a **100 % local agentic coding harness**: an agent loop that drives **Qwen 3.5 9B** served by **Ollama**, with a tool set for reading, editing, and moving files and running commands inside a codebase — without depending on a cloud LLM billed per token.
+`ollama-code` is a **100 % local agentic coding harness**: an agent loop that drives **Fly-ai** served by **Ollama**, with a tool set for reading, editing, and moving files and running commands inside a codebase — without depending on a cloud LLM billed per token.
 
 The project's central thesis is not "run an LLM locally" (that part is trivial), but **making a 9-billion-parameter model reliable enough for real agentic work**. A model of this size fails where a frontier model succeeds: malformed tool arguments, edits that don't match, drift on long tasks, context saturation. The technical core of the harness is therefore a series of **reliability mitigations**: few tools with short descriptions, string-replacement editing with **progressive matching**, strict argument validation with *actionable* errors so the model can retry, a context budget with compaction, and a permission engine with hard denies.
 
@@ -48,13 +48,13 @@ The harness is therefore as much a piece of **reliability engineering** as of LL
 | Claude Code / Cowork | Cloud frontier | ✗ | ✗ | per token |
 | Cursor | Cloud | ✗ | ✗ | per token / subscription |
 | aider (+ Ollama) | your choice | ✓ | partial | zero |
-| **ollama-code** | **Qwen 3.5 9B** | **✓** | **✓ (fully)** | **zero** |
+| **ollama-code** | **Fly-ai** | **✓** | **✓ (fully)** | **zero** |
 
 The harness borrows proven patterns from `aider` (`str_replace` editing, architect/editor fallback) while keeping a minimal, fully owned codebase, designed from day one for fine-tuning.
 
 ---
 
-## 2. Technical context: Qwen 3.5 9B + Ollama
+## 2. Technical context: Fly-ai + Ollama
 
 The facts below are based on the Ollama and Qwen documentation, verified against a live Ollama server before implementation (see [RUNTIME_API.md](docs/RUNTIME_API.md) §0), and drive most of the architecture decisions.
 
@@ -68,7 +68,7 @@ The facts below are based on the Ollama and Qwen documentation, verified against
 
 ```mermaid
 flowchart LR
-    A["Qwen 3.5 9B<br/>via Ollama"] --> B["Trap 1: context drops to 4096<br/>by default under 24 GB VRAM"]
+    A["Fly-ai<br/>via Ollama"] --> B["Trap 1: context drops to 4096<br/>by default under 24 GB VRAM"]
     A --> C["Trap 2: OpenAI /v1 endpoint<br/>tool-call bug + fixed num_ctx"]
     A --> D["Trap 3: abort() kills<br/>ALL streams of an instance"]
     A --> E["Trap 4: Ollama multimodal<br/>= text + images only"]
@@ -152,7 +152,7 @@ flowchart TB
         IMG["images.ts · image → base64"]
     end
 
-    O[("Ollama · native /api/chat<br/>Qwen 3.5 9B")]
+    O[("Ollama · native /api/chat<br/>Fly-ai")]
 
     U --> CLI
     U --> BIN
